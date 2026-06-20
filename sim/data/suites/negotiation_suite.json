@@ -1,0 +1,286 @@
+{
+  "name": "Negotiation copilot suite",
+  "description": "Six agents that coach a BUYER through a high-stakes deal negotiation. Demonstrates an anchoring alert that emits an event, a Phase-2 concession tracker that writes facts + a queue, a BATNA reminder on an INTERVAL trigger, a deadline-pressure warning that gets cooldown-gated, and a PRIORITY collision where two agents fight over the same `phase` variable.",
+  "agents": [
+    {
+      "id": "phase_tracker",
+      "name": "Phase Tracker",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 0,
+        "priority": 1
+      },
+      "text": "You silently track which phase of the negotiation we are in.",
+      "_doc": "Silent low-priority state agent (priority 1). Writes the `phase` variable. It COLLIDES with Deal Strategist (priority 9) on the `phase` variable: on every turn where both write, the engine merges in ASCENDING priority so Deal Strategist writes LAST and wins. Watch the Blackboard `phase` -> it shows the strategist's value ('opening'/'bargaining'/'closing'), NEVER this agent's 'phase_tracker_says_*' value. That is last-write-wins-by-priority. (Both agents read the same rendered transcript, so they always agree on WHICH bucket -- only the written value differs, which is what makes the collision visible.)",
+      "_mock": {
+        "latency_ms": 120,
+        "rules": [
+          {
+            "when": {
+              "any_keywords": [
+                "sign the deal",
+                "send the paperwork",
+                "let's sign"
+              ]
+            },
+            "variable_updates": {
+              "phase": "phase_tracker_says_closing"
+            }
+          },
+          {
+            "when": {
+              "any_keywords": [
+                "per unit",
+                "/unit",
+                "your offer",
+                "the price",
+                "discount"
+              ]
+            },
+            "variable_updates": {
+              "phase": "phase_tracker_says_bargaining"
+            }
+          },
+          {
+            "when": {},
+            "variable_updates": {
+              "phase": "phase_tracker_says_opening"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "deal_strategist",
+      "name": "Deal Strategist",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 0,
+        "priority": 9
+      },
+      "text": "You set the authoritative negotiation phase, overriding noisier trackers.",
+      "_doc": "High-priority (9) silent strategist. Also writes the `phase` variable, deliberately colliding with Phase Tracker (priority 1). Because the engine applies updates in ascending priority order, this agent writes LAST and its value ('opening'/'bargaining'/'closing') is the one that lands on the Blackboard. If you lowered this priority below 1, Phase Tracker would win instead -- that is the lesson. Its rules MIRROR Phase Tracker's `when` clauses exactly so the two always select the same bucket and only the written value differs.",
+      "_mock": {
+        "latency_ms": 150,
+        "rules": [
+          {
+            "when": {
+              "any_keywords": [
+                "sign the deal",
+                "send the paperwork",
+                "let's sign"
+              ]
+            },
+            "variable_updates": {
+              "phase": "closing"
+            }
+          },
+          {
+            "when": {
+              "any_keywords": [
+                "per unit",
+                "/unit",
+                "your offer",
+                "the price",
+                "discount"
+              ]
+            },
+            "variable_updates": {
+              "phase": "bargaining"
+            }
+          },
+          {
+            "when": {},
+            "variable_updates": {
+              "phase": "opening"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "anchoring_alert",
+      "name": "Anchoring Alert",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": [
+          "turn_based",
+          "keyword"
+        ],
+        "keywords": [
+          "per unit",
+          "$",
+          "offer",
+          "price is",
+          "we can do"
+        ],
+        "cooldown": 8,
+        "priority": 5
+      },
+      "text": "Warn the buyer the moment the seller drops the first number, so they don't accept the anchor.",
+      "_doc": "The anchoring coach. Fires when the SELLER drops the first concrete number. It does THREE things: (1) WARNS the buyer not to negotiate up from the seller's anchor, (2) records an `anchor` fact, and (3) emits the `number_anchored` EVENT. That event wakes the Concession Tracker in PHASE 2 of the SAME turn -- this is the Phase-1 -> Phase-2 one-hop coordination. Cooldown is 8s so a rapid second number is gated (see Deadline lesson).",
+      "_mock": {
+        "latency_ms": 300,
+        "rules": [
+          {
+            "when": {
+              "speaker": "SELLER",
+              "regex": "\\$\\s?\\d|\\d+\\s?(k\\b|per unit|/unit)"
+            },
+            "speak": {
+              "content": "That's their anchor -- the FIRST number always frames the rest. Do not counter just below it. Re-anchor low with your own justified number.",
+              "type": "warning",
+              "confidence": 0.92,
+              "action_label": "Re-anchor low"
+            },
+            "facts": [
+              {
+                "type": "anchor",
+                "key": "seller_first_offer",
+                "value": "seller dropped the first price anchor",
+                "confidence": 0.85
+              }
+            ],
+            "events": [
+              {
+                "name": "number_anchored",
+                "payload": {
+                  "from": "seller"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "concession_tracker",
+      "name": "Concession Tracker",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "event",
+        "subscribed_events": [
+          "number_anchored"
+        ],
+        "cooldown": 0,
+        "priority": 4
+      },
+      "text": "Whenever a number is anchored, log it and remind the buyer to trade, never give, concessions.",
+      "_doc": "EVENT-triggered. Runs ONLY in Phase 2, and ONLY on turns where Anchoring Alert emitted `number_anchored`. On every other turn it appears under 'skipped (trigger_type_mismatch)'. When it does run it (1) writes a `concession` fact, (2) pushes a reminder onto the `give_gets` queue, and (3) whispers a suggestion. Watch the Facts + Queues sections of the Blackboard grow only on anchored turns.",
+      "_mock": {
+        "latency_ms": 380,
+        "rules": [
+          {
+            "when": {
+              "has_event": "number_anchored"
+            },
+            "speak": {
+              "content": "A number just hit the table. Never concede for free -- every give must buy a get (term, volume, timeline). Log what you'd trade for a discount.",
+              "type": "suggestion",
+              "confidence": 0.8,
+              "action_label": "Trade, don't give"
+            },
+            "facts": [
+              {
+                "type": "concession",
+                "key": "pending",
+                "value": "seller offer on the table awaiting a counter-with-condition",
+                "confidence": 0.75
+              }
+            ],
+            "queue_pushes": {
+              "give_gets": [
+                "give: longer term -> get: lower per-unit price"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "batna_reminder",
+      "name": "BATNA Reminder",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "interval",
+        "cooldown": 0,
+        "priority": 3
+      },
+      "text": "On a periodic tick, remind the buyer of their walk-away alternative (BATNA).",
+      "_doc": "INTERVAL-triggered. It has an EMPTY `when`, so it speaks on every INTERVAL tick the host sends -- but it NEVER fires on a normal turn_based turn, because the engine only routes INTERVAL-subscribed agents on INTERVAL triggers. Find the scenario step with \"trigger\": \"interval\": that is the only turn this agent runs. The lesson: trigger TYPE is routing, independent of keywords.",
+      "_mock": {
+        "latency_ms": 200,
+        "rules": [
+          {
+            "when": {},
+            "speak": {
+              "content": "BATNA check: your walk-away is the competing supplier at $42/unit. Any deal worse than that is a NO. Negotiate from strength, not fear.",
+              "type": "suggestion",
+              "confidence": 0.9,
+              "action_label": "Recall your BATNA"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "deadline_pressure",
+      "name": "Deadline Pressure Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "keyword",
+        "keywords": [
+          "deadline",
+          "expires",
+          "final offer",
+          "today only",
+          "walk away",
+          "by friday"
+        ],
+        "cooldown": 9,
+        "priority": 6
+      },
+      "text": "Catch artificial-urgency tactics and stop the buyer from caving to a fake deadline.",
+      "_doc": "KEYWORD-only trigger. The host (the simulator) detects the keywords and only then routes this agent -- so it is eligible ONLY on scenario steps marked \"trigger\": \"keyword\". It WARNS that urgency is usually manufactured. Cooldown is 9s on purpose: when the seller applies deadline pressure twice within 9s (two keyword steps), the FIRST fires and the SECOND is GATED by cooldown -- it appears in 'skipped: cooldown' even though the keyword clearly matched. Because the mode is keyword-only, quiet turns never reset its cooldown, so the two-hit gating is clean and predictable. This is the clearest demonstration that cooldown is a timing gate that is checked AFTER trigger eligibility.",
+      "_mock": {
+        "latency_ms": 320,
+        "rules": [
+          {
+            "when": {
+              "any_keywords": [
+                "deadline",
+                "by friday",
+                "expires",
+                "today only",
+                "final offer",
+                "walk away",
+                "pressure"
+              ]
+            },
+            "speak": {
+              "content": "Manufactured urgency. A real deadline has a reason; an arbitrary one is a tactic. Slow down -- name the pressure out loud and ask why Friday specifically.",
+              "type": "warning",
+              "confidence": 0.9,
+              "action_label": "Name the tactic"
+            },
+            "facts": [
+              {
+                "type": "tactic",
+                "key": "deadline_pressure",
+                "value": "seller applied time pressure",
+                "confidence": 0.8
+              }
+            ],
+            "memory_updates": {
+              "pressure_count": {
+                "$inc": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,335 @@
+{
+  "name": "Customer support copilot suite",
+  "description": "Seven specialist agents that coach a live support AGENT in real time. Demonstrates turn-based, keyword, silence, and event (Phase-2) triggers; high-priority escalation alerting; KB suggestion; a sentiment variable tracker; an SLA/idle monitor on a silence tick; cooldown gating; and one-hop question->answer event coordination.",
+  "agents": [
+    {
+      "id": "phase_tracker",
+      "name": "Conversation Phase Tracker",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 0,
+        "priority": 1
+      },
+      "text": "You silently track which phase of the support conversation we are in.",
+      "_doc": "Silent state agent. Writes the `phase` variable every turn (no whisper). Watch the Blackboard panel: `phase` flips greeting -> troubleshooting -> escalation -> resolution. It has cooldown 0 so it can re-write every single turn.",
+      "_mock": {
+        "latency_ms": 130,
+        "rules": [
+          {
+            "when": {
+              "min_turn": 1,
+              "max_turn": 1
+            },
+            "variable_updates": {
+              "phase": "greeting"
+            }
+          },
+          {
+            "when": {
+              "any_keywords": [
+                "refund",
+                "cancel",
+                "speak to",
+                "manager",
+                "supervisor",
+                "unacceptable",
+                "ridiculous"
+              ]
+            },
+            "variable_updates": {
+              "phase": "escalation"
+            }
+          },
+          {
+            "when": {
+              "any_keywords": [
+                "error",
+                "not working",
+                "broken",
+                "can't",
+                "cannot",
+                "won't",
+                "failed",
+                "issue",
+                "crash"
+              ]
+            },
+            "variable_updates": {
+              "phase": "troubleshooting"
+            }
+          },
+          {
+            "when": {
+              "any_keywords": [
+                "that worked",
+                "resolved",
+                "appreciate",
+                "perfect",
+                "thank you"
+              ]
+            },
+            "variable_updates": {
+              "phase": "resolution"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "sentiment_tracker",
+      "name": "Sentiment Tracker",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 0,
+        "priority": 1
+      },
+      "text": "You silently track the customer's sentiment.",
+      "_doc": "Silent variable tracker. Writes the `sentiment` variable (negative / neutral / positive) every turn it matches, with NO whisper. Watch the `sentiment` variable in the Blackboard panel flip as the customer's mood changes. Rules are ordered worst-first so a single angry line wins over a polite one in the same window. Teaching point: it reclassifies from the LAST rendered line only -- 'cancel the whole subscription' (no explicit anger word) reads as neutral.",
+      "_mock": {
+        "latency_ms": 150,
+        "rules": [
+          {
+            "when": {
+              "any_keywords": [
+                "furious",
+                "angry",
+                "ridiculous",
+                "unacceptable",
+                "worst",
+                "terrible",
+                "frustrated",
+                "fed up",
+                "sick of"
+              ]
+            },
+            "variable_updates": {
+              "sentiment": "negative"
+            }
+          },
+          {
+            "when": {
+              "any_keywords": [
+                "thanks",
+                "thank you",
+                "great",
+                "perfect",
+                "appreciate",
+                "that worked",
+                "awesome",
+                "happy"
+              ]
+            },
+            "variable_updates": {
+              "sentiment": "positive"
+            }
+          },
+          {
+            "when": {},
+            "variable_updates": {
+              "sentiment": "neutral"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "escalation_alert",
+      "name": "Escalation Alert",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": [
+          "turn_based",
+          "keyword"
+        ],
+        "keywords": [
+          "refund",
+          "cancel",
+          "lawyer",
+          "manager",
+          "supervisor",
+          "furious"
+        ],
+        "cooldown": 12,
+        "priority": 10
+      },
+      "text": "Detect anger, refund, or cancellation language and alert the support agent to de-escalate.",
+      "_doc": "Highest priority (10). Fires a WARNING on anger / refund / cancel / escalation language and records an `escalation_risk` fact + increments escalation_count in private memory. Cooldown is 12s ON PURPOSE: when two escalation lines land <12s apart, the SECOND turn is gated by cooldown -- look for it under the turn's 'skipped: cooldown' list. After 12s elapse it can fire again (cooldown recovery on the final turn).",
+      "_mock": {
+        "latency_ms": 340,
+        "rules": [
+          {
+            "when": {
+              "any_keywords": [
+                "refund",
+                "cancel",
+                "furious",
+                "angry",
+                "lawyer",
+                "manager",
+                "supervisor",
+                "unacceptable",
+                "ridiculous"
+              ]
+            },
+            "speak": {
+              "content": "Escalation risk. Acknowledge the frustration first, do NOT defend policy yet. Empathize, then offer one concrete next step.",
+              "type": "warning",
+              "confidence": 0.93,
+              "action_label": "De-escalate"
+            },
+            "facts": [
+              {
+                "type": "escalation_risk",
+                "key": "customer",
+                "value": "customer used anger / refund / cancel language",
+                "confidence": 0.85
+              }
+            ],
+            "memory_updates": {
+              "escalation_count": {
+                "$inc": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "kb_suggester",
+      "name": "Knowledge Base Suggester",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 4,
+        "priority": 3
+      },
+      "text": "When the customer describes a known product problem, suggest the relevant knowledge-base article.",
+      "_doc": "Turn-based SUGGESTION agent. Fires when the customer describes a recognizable product issue (login, sync, password, billing) and surfaces the matching KB article. Cooldown 4s: two issue descriptions in quick succession can gate the second -- but mostly it fires, and is the 'helpful answer' counterpart to the angry-customer agents.",
+      "_mock": {
+        "latency_ms": 300,
+        "rules": [
+          {
+            "when": {
+              "any_keywords": [
+                "login",
+                "log in",
+                "sign in",
+                "password",
+                "locked out",
+                "sync",
+                "syncing",
+                "not syncing",
+                "billing",
+                "charged",
+                "invoice",
+                "2fa",
+                "two-factor"
+              ]
+            },
+            "speak": {
+              "content": "Known issue. Suggest KB article 'Resolving login & sync errors' and walk them through the reset steps before anything else.",
+              "type": "suggestion",
+              "confidence": 0.8,
+              "action_label": "Open KB article"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "question_detector",
+      "name": "Question Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 2,
+        "priority": 2
+      },
+      "text": "Detect when the customer asks a question and signal other agents.",
+      "_doc": "Emits the `customer_question` EVENT and queues the question. The event wakes the Answer Suggester in Phase 2 of the SAME turn -- this is the framework's one-hop coordination. Silent itself (no whisper); watch the Events row and the `pending_questions` queue grow.",
+      "_mock": {
+        "latency_ms": 210,
+        "rules": [
+          {
+            "when": {
+              "speaker": "CUSTOMER",
+              "regex": "\\?"
+            },
+            "events": [
+              {
+                "name": "customer_question",
+                "payload": {
+                  "from": "customer"
+                }
+              }
+            ],
+            "queue_pushes": {
+              "pending_questions": [
+                "customer question"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "answer_suggester",
+      "name": "Answer Suggester",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "event",
+        "subscribed_events": [
+          "customer_question"
+        ],
+        "cooldown": 0,
+        "priority": 2
+      },
+      "text": "When a customer question is detected, suggest how to answer it.",
+      "_doc": "EVENT-triggered. Runs ONLY in Phase 2, and ONLY on turns where Question Detector emitted `customer_question`. On every other turn it appears under 'skipped (trigger_type_mismatch)'. This is the clearest view of Phase-1 -> Phase-2 coordination and the extra LLM round-trip it costs (see the per-phase latency).",
+      "_mock": {
+        "latency_ms": 380,
+        "rules": [
+          {
+            "when": {
+              "has_event": "customer_question"
+            },
+            "speak": {
+              "content": "Customer asked a direct question. Answer it plainly first -- give a clear yes/no or timeframe -- then add the detail. Don't bury the answer.",
+              "type": "suggestion",
+              "confidence": 0.84,
+              "action_label": "Answer directly"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "sla_idle_monitor",
+      "name": "SLA Idle Monitor",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "silence",
+        "cooldown": 0,
+        "priority": 8
+      },
+      "text": "Warn the support agent when the customer has gone quiet and the SLA response window is at risk.",
+      "_doc": "SILENCE-triggered. It does NOT run on normal talking turns (it has only TriggerType.SILENCE, so on text turns it shows under 'skipped: trigger_type_mismatch'). It fires only on a turn the host marks trigger=silence. Its rule has an empty `when` so it always speaks on that tick -- a deliberate contrast with the sales demo, where NO silence agent existed and the dead-air turn produced nothing.",
+      "_mock": {
+        "latency_ms": 260,
+        "rules": [
+          {
+            "when": {},
+            "speak": {
+              "content": "Customer has gone quiet and the SLA reply window is closing. Send a proactive check-in: 'Still here with you -- are you able to try that step?'",
+              "type": "warning",
+              "confidence": 0.88,
+              "action_label": "Send check-in"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

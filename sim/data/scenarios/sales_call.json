@@ -1,0 +1,77 @@
+{
+  "name": "Sales discovery call",
+  "description": "A B2B discovery -> pricing -> objection -> closing call. The REP is the user; whispers coach the REP. Designed to fire every agent in the Sales suite and to show event coordination and cooldown gating.",
+  "session_id": "sales_demo",
+  "window": 12,
+  "user_context": "You are Alex, an account executive at Acme Software. You are on a live call with a prospect. The copilot whispers private coaching to you.",
+  "language_directive": "Respond in English.",
+  "steps": [
+    {
+      "speaker": "REP",
+      "text": "Thanks for making the time today. To start -- tell me how your team handles this process right now.",
+      "timestamp": 0,
+      "note": "Discovery opens. Phase Tracker sets phase=discovery. No whisper expected."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "Sure. Right now everything lives in spreadsheets and honestly it's a mess. Things slip through the cracks.",
+      "timestamp": 9,
+      "note": "Pain surfaced. Still discovery; nothing should fire yet."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "Before we go further -- how much does your platform actually cost?",
+      "timestamp": 19,
+      "note": "A customer QUESTION about pricing. Expect: phase -> negotiation; Question Detector emits an event; Answer Suggester fires in PHASE 2 (one-hop coordination)."
+    },
+    {
+      "speaker": "REP",
+      "text": "Great question. It depends on seats -- let me walk you through the tiers.",
+      "timestamp": 27,
+      "note": "Rep response. Quiet turn."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "Hmm, honestly that sounds expensive compared to what we pay now.",
+      "timestamp": 37,
+      "note": "PRICE OBJECTION. Expect a WARNING whisper, an `objection` fact, and objection_count -> 1 in memory."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "Could you do a discount if we sign for a year?",
+      "timestamp": 44,
+      "note": "Second objection only 7s later. Objection Handler is on a 10s cooldown -> it is GATED (see 'skipped: cooldown'). 'sign' is a buying signal, so Buying Signal Detector fires instead."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "We've got about $40k budgeted for this per year, if it's the right fit.",
+      "timestamp": 54,
+      "note": "Budget figure. Budget Extractor writes a `budget` fact silently. No whisper."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "Can you guarantee we'll be fully live within two weeks?",
+      "timestamp": 64,
+      "note": "QUESTION + 'guarantee'. Expect TWO things this turn: Compliance Monitor warns (priority 10), and Question Detector -> Answer Suggester fires again in Phase 2."
+    },
+    {
+      "speaker": "REP",
+      "text": "I can promise you we'll be live in exactly two weeks, no risk at all.",
+      "timestamp": 73,
+      "note": "The REP over-promises. Compliance Monitor catches 'promise' / 'no risk' and warns the rep to soften the claim."
+    },
+    {
+      "speaker": "CUSTOMER",
+      "text": "Okay -- I think we're ready to move forward. What are the next steps?",
+      "timestamp": 84,
+      "note": "Strong buying signal + a question. Expect: phase -> closing; Buying Signal OPPORTUNITY; and an Answer Suggester whisper in Phase 2."
+    },
+    {
+      "trigger": "silence",
+      "silence_duration": 16,
+      "timestamp": 100,
+      "note": "16s of dead air. No SILENCE-triggered agent is configured, so nothing fires -- a deliberate lesson: trigger types only fire agents that subscribe to them."
+    }
+  ],
+  "user_speaker": "REP"
+}

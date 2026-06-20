@@ -1,0 +1,71 @@
+{
+  "name": "Behavioral job interview",
+  "description": "A mock behavioral interview. The CANDIDATE (ME) is the user; whispers privately coach the candidate. Designed to fire every agent in the Interview suite and to show event coordination (interviewer question -> follow-up prediction in Phase 2), $inc memory accumulation, public-variable confidence tracking, silence triggering, and cooldown gating of both the STAR Coach and the Filler Detector.",
+  "session_id": "interview_demo",
+  "window": 12,
+  "user_context": "You are Sam, a candidate in a live behavioral interview for a senior product role. The copilot whispers private coaching only you can see.",
+  "language_directive": "Respond in English.",
+  "steps": [
+    {
+      "speaker": "INTERVIEWER",
+      "text": "Thanks for coming in. To start -- tell me about a time you had to turn around a project that was failing. What happened?",
+      "timestamp": 0,
+      "note": "A behavioral QUESTION ('?'). Expect: Question Detector emits the `interviewer_question` event and queues it; Follow-up Predictor fires in PHASE 2 (one-hop coordination) with an OPPORTUNITY whisper. Note the extra modeled latency from the Phase-2 round-trip."
+    },
+    {
+      "speaker": "ME",
+      "text": "Sure. The situation was a stalled checkout redesign. My role was to own it, and I had to rebuild trust with engineering first.",
+      "timestamp": 12,
+      "note": "Behavioral answer that sets up Situation/Task but stops before any Result. Expect: STAR Coach WARNS (add the Result). Answer Tracker silently $inc answer_count -> 1 and sets confidence=medium (contains 'I'/'my'). No filler, so Filler Detector stays silent."
+    },
+    {
+      "speaker": "ME",
+      "text": "I decided to ship a thin slice first, and as a result conversion grew by 18 percent in the next quarter.",
+      "timestamp": 17,
+      "note": "Only 5s after the last answer. STAR Coach cooldown is 8s -> it is GATED (17-12=5 < 8), so even though this answer NOW has a Result it gets no praise (see 'skipped: cooldown'). Answer Tracker still runs (cooldown 0): $inc -> 2 and confidence=high (matches 'as a result'/'grew by'). Deliberate lesson: the coach throttles itself across back-to-back sentences."
+    },
+    {
+      "speaker": "INTERVIEWER",
+      "text": "Nice. And how did you handle the stakeholders who disagreed with that call?",
+      "timestamp": 28,
+      "note": "Second interviewer QUESTION. Question Detector re-emits `interviewer_question`; Follow-up Predictor fires again in Phase 2. Answer Tracker does not run a memory update here (speaker is INTERVIEWER, not ME)."
+    },
+    {
+      "speaker": "ME",
+      "text": "Um, I guess I, you know, kind of just talked to them, probably not really sure it was perfect.",
+      "timestamp": 40,
+      "note": "Filler-heavy, hedging answer. Expect: Filler Detector fires a SUGGESTION (um / you know / like). Answer Tracker sets confidence=low (matches 'i guess'/'probably'/'kind of') and $inc -> 3. STAR Coach is NOT cooldown-gated here (its last successful run was t=12 -- a gated turn does NOT refresh the cooldown clock -- and 40-12=28 > 8), but this answer has no STAR setup keywords and no Result, so STAR Coach finds no matching rule and stays silent. Subtle lesson: 'eligible and ran' is not the same as 'whispered'."
+    },
+    {
+      "speaker": "ME",
+      "text": "Like, um, I mean, you know, it mostly worked out in the end I think.",
+      "timestamp": 44,
+      "note": "More filler only 4s later. Filler Detector cooldown is 6s -> it is GATED (44-40=4 < 6) and appears under 'skipped: cooldown'. Answer Tracker still runs (cooldown 0): $inc -> 4, and confidence flips low -> medium (no hedging keyword here, but the generic 'I' rule matches). Clear back-to-back cooldown demonstration on a keyword-mode agent."
+    },
+    {
+      "speaker": "INTERVIEWER",
+      "text": "Got it. Tell me about a result you are genuinely proud of.",
+      "timestamp": 52,
+      "note": "Interviewer prompt but NOT a question (no '?'). Lesson: Question Detector is gated on a literal '?', so it stays silent and NO event fires -> Follow-up Predictor is correctly skipped (trigger_type_mismatch) this turn. The text alone, not the intent, drives the mock -- mock rules are pure functions of the prompt."
+    },
+    {
+      "speaker": "ME",
+      "text": "I led a pricing experiment end to end. We reduced churn, and the result was a 12% lift in net revenue retention.",
+      "timestamp": 60,
+      "note": "Clean STAR answer with a measurable Result. STAR Coach is just past cooldown (its prior run was t=52, and 60-52=8 is NOT < 8) -> it PRAISES (the praise rule is listed first and `stop` defaults true, so a complete answer never also triggers the warning). Answer Tracker: confidence=high (matches 'i led'/'the result was'/'we reduced'), $inc -> 5."
+    },
+    {
+      "trigger": "silence",
+      "silence_duration": 14,
+      "timestamp": 74,
+      "note": "14 seconds of dead air after the candidate finishes. This step's trigger is 'silence', so ONLY the Pace Coach (mode silence) is eligible -- it fires a reassuring SUGGESTION. Every turn_based/keyword agent shows under 'skipped: trigger_type_mismatch'. Mirror of the event lesson: an agent only fires for the trigger type it subscribes to."
+    },
+    {
+      "speaker": "INTERVIEWER",
+      "text": "Last one -- where do you want to grow next, and why?",
+      "timestamp": 90,
+      "note": "Final interviewer QUESTION. Question Detector emits `interviewer_question` a third time; Follow-up Predictor fires once more in Phase 2. Closes the loop on event coordination. Final blackboard: answer_tracker.answer_count = 5 in memory, `confidence` variable = high, pending_questions queue grew with each interviewer question."
+    }
+  ],
+  "user_speaker": "ME"
+}

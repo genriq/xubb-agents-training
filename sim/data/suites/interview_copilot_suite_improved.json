@@ -1,0 +1,284 @@
+{
+  "name": "Interview copilot suite (improved)",
+  "description": "Six specialist agents that coach a job candidate in real time. Demonstrates turn-based, keyword, silence, and event (Phase-2) triggers; fact/queue/variable/memory writes; $inc memory accumulation; priority; and cooldown gating. The coached user is the CANDIDATE (speaker ME).",
+  "agents": [
+    {
+      "id": "answer_tracker",
+      "name": "Answer Tracker",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 0,
+        "priority": 1
+      },
+      "text": "You are a silent state agent. Track the number of substantive answers the candidate gives and update the confidence level based on the presence of hedging words. Do NOT whisper or provide any feedback. Your role is to silently update internal state and public variables. Always set has_insight=false.",
+      "_doc": "Silent state agent. Never whispers. On every turn the CANDIDATE (ME) speaks a substantive answer it does two things: $inc answer_count in its PRIVATE memory, and writes the public `confidence` variable. Watch the Blackboard panel: memory.answer_tracker.answer_count climbs 1 -> 2 -> 3..., and the `confidence` variable flips low -> medium -> high as hedging words disappear. This is the clearest view of `$inc` accumulating across turns AND of memory (private) vs variables (public) living in different places on the board.",
+      "_mock": {
+        "latency_ms": 130,
+        "rules": [
+          {
+            "when": {
+              "speaker": "ME",
+              "any_keywords": [
+                "i think maybe",
+                "i guess",
+                "not really sure",
+                "probably",
+                "kind of"
+              ]
+            },
+            "variable_updates": {
+              "confidence": "low"
+            },
+            "memory_updates": {
+              "answer_count": {
+                "$inc": 1
+              }
+            }
+          },
+          {
+            "when": {
+              "speaker": "ME",
+              "any_keywords": [
+                "i led",
+                "i delivered",
+                "i owned",
+                "we shipped",
+                "i drove",
+                "as a result",
+                "the result was"
+              ]
+            },
+            "variable_updates": {
+              "confidence": "high"
+            },
+            "memory_updates": {
+              "answer_count": {
+                "$inc": 1
+              }
+            }
+          },
+          {
+            "when": {
+              "speaker": "ME",
+              "regex": "\\b(I|we|my team)\\b"
+            },
+            "variable_updates": {
+              "confidence": "medium"
+            },
+            "memory_updates": {
+              "answer_count": {
+                "$inc": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "question_detector",
+      "name": "Question Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 0,
+        "priority": 2
+      },
+      "text": "Detect when the interviewer asks a question by identifying a '?' at the end of their turn. Emit an event named exactly 'interviewer_question' and queue the question text. Do NOT provide any suggestions or feedback. Set has_insight=false unless a question is detected in the most recent turn.",
+      "_doc": "Turn-based detector. When the INTERVIEWER ends a turn with a '?', it emits the `interviewer_question` EVENT and queues the question text. The event wakes the Follow-up Predictor in Phase 2 of the SAME turn -- the framework's one-hop coordination. It is gated on speaker=INTERVIEWER so the candidate's own rhetorical questions never trip it.",
+      "_mock": {
+        "latency_ms": 200,
+        "rules": [
+          {
+            "when": {
+              "speaker": "INTERVIEWER",
+              "regex": "\\?"
+            },
+            "events": [
+              {
+                "name": "interviewer_question",
+                "payload": {
+                  "from": "interviewer"
+                }
+              }
+            ],
+            "queue_pushes": {
+              "pending_questions": [
+                "interviewer question"
+              ]
+            }
+          }
+        ]
+      },
+      "trigger_conditions": {
+        "speaker": "INTERVIEWER",
+        "ends_with": "?"
+      }
+    },
+    {
+      "id": "followup_predictor",
+      "name": "Follow-up Predictor",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "event",
+        "subscribed_events": [
+          "interviewer_question"
+        ],
+        "cooldown": 0,
+        "priority": 2
+      },
+      "text": "When triggered by the 'interviewer_question' event, predict the follow-up question the interviewer might ask next. This helps the candidate prepare. Do NOT run unless this specific event is present. Always set has_insight=false unless triggered by the event.",
+      "_doc": "EVENT-triggered. Runs ONLY in Phase 2, and ONLY on turns where Question Detector emitted `interviewer_question`. On every other turn it appears under 'skipped (trigger_type_mismatch)'. This is the cleanest view of Phase-1 -> Phase-2 coordination and the +1 LLM round-trip (extra modeled latency) it costs. Its rule gates on `has_event` -- a live blackboard read that is only true in Phase 2.",
+      "_mock": {
+        "latency_ms": 360,
+        "rules": [
+          {
+            "when": {
+              "has_event": "interviewer_question"
+            },
+            "speak": {
+              "content": "They will likely probe deeper: expect a follow-up like 'what would you do differently?' or 'what was the measurable impact?'. Answer this one with a concrete result so you pre-empt it.",
+              "type": "opportunity",
+              "confidence": 0.8,
+              "action_label": "Pre-load the follow-up"
+            }
+          }
+        ]
+      },
+      "trigger_conditions": {
+        "has_event": "interviewer_question"
+      }
+    },
+    {
+      "id": "star_coach",
+      "name": "STAR Coach",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 8,
+        "priority": 5
+      },
+      "text": "Coach the candidate to use the STAR method (Situation, Task, Action, Result) in their answers. Praise complete STAR answers and warn if the Result is missing. Do NOT repeat advice within 8 seconds to avoid redundancy. Only provide feedback if the most recent turn contains a behavioral answer.",
+      "_doc": "The headline coach. Turn-based, cooldown 8s on purpose. On a behavioral answer that names a Result ('as a result', 'the result was', a metric) it PRAISES a complete STAR answer. On a behavioral answer missing the Result it WARNS the candidate to land the outcome. Because the cooldown is 8s, when the candidate gives two answers <8s apart the SECOND evaluation is GATED by cooldown (see the 'skipped: cooldown' list) -- a deliberate lesson that the coach throttles itself so it never nags on back-to-back sentences. Rule order matters: the praise rule (Result present) is listed first and `stop` defaults true, so a complete answer never also triggers the warning.",
+      "_mock": {
+        "latency_ms": 330,
+        "rules": [
+          {
+            "when": {
+              "speaker": "ME",
+              "any_keywords": [
+                "as a result",
+                "the result was",
+                "we increased",
+                "we reduced",
+                "cut by",
+                "grew by",
+                "percent",
+                "%"
+              ]
+            },
+            "speak": {
+              "content": "Strong STAR answer -- you landed a concrete Result. That is exactly the shape interviewers score highest.",
+              "type": "praise",
+              "confidence": 0.88,
+              "action_label": "Keep this structure"
+            }
+          },
+          {
+            "when": {
+              "speaker": "ME",
+              "any_keywords": [
+                "situation",
+                "my role",
+                "i was responsible",
+                "the project",
+                "we were tasked",
+                "challenge was",
+                "i had to",
+                "i decided"
+              ]
+            },
+            "speak": {
+              "content": "Good setup, but you stopped before the Result. Close the loop: state the measurable outcome (a number, a saved week, a won deal) so this becomes a full STAR answer.",
+              "type": "warning",
+              "confidence": 0.82,
+              "action_label": "Add the Result"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "filler_detector",
+      "name": "Filler Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": [
+          "turn_based",
+          "keyword"
+        ],
+        "keywords": [
+          "um",
+          "uh",
+          "like",
+          "you know"
+        ],
+        "cooldown": 6,
+        "priority": 4
+      },
+      "text": "Detect filler words such as 'um', 'uh', 'like', and 'you know' in the candidate's speech. Suggest pausing silently instead. Respect a 6-second cooldown to prevent excessive whispering. Only provide feedback if filler words are detected in the most recent turn.",
+      "_doc": "Fires on filler words in the CANDIDATE's speech and nudges them to pause silently instead. Cooldown 6s: two filler-heavy answers landing <6s apart -> the second is cooldown-GATED. Note the `not_keywords` guard: 'like' as a comparison ('like a startup') should NOT trip it, so the regex-ish rule requires standalone filler. Watch how a keyword-mode agent only sees the words that are actually in its prompt window.",
+      "_mock": {
+        "latency_ms": 240,
+        "rules": [
+          {
+            "when": {
+              "speaker": "ME",
+              "regex": "\\b(um|uh)\\b|you know|\\blike,|, like\\b"
+            },
+            "speak": {
+              "content": "Filler detected (um / uh / like / you know). Replace it with a half-second silent pause -- it reads as far more composed than a verbal crutch.",
+              "type": "suggestion",
+              "confidence": 0.84,
+              "action_label": "Pause, don't fill"
+            }
+          }
+        ]
+      },
+      "trigger_conditions": {
+        "speaker": "CANDIDATE",
+        "contains_keywords": [
+          "um",
+          "uh",
+          "like",
+          "you know"
+        ]
+      }
+    },
+    {
+      "id": "pace_coach",
+      "name": "Pace Coach",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "silence",
+        "cooldown": 0,
+        "priority": 3
+      },
+      "text": "When the candidate goes quiet for a long beat, reassure them that a short, composed pause is fine.",
+      "_doc": "SILENCE-triggered. Fires ONLY on a scenario step whose trigger is 'silence'. On all turn_based/keyword turns it shows under 'skipped (trigger_type_mismatch)'. Its `when` is intentionally minimal (no keywords) so it speaks on the silence tick itself -- the host decides WHEN to fire it; the agent just reacts to being woken. This is the mirror image of the Follow-up Predictor: same 'only fires on its own trigger type' lesson, but via the host (silence) rather than via an in-engine event.",
+      "_mock": {
+        "latency_ms": 150,
+        "rules": [
+          {
+            "speak": {
+              "content": "Long pause -- that is okay. A composed 3-second silence beats rushing into a filler-filled answer. Take the beat, then answer in STAR.",
+              "type": "suggestion",
+              "confidence": 0.8,
+              "action_label": "Breathe, then answer"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

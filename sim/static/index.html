@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Xubb Agents Simulator</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --border: #2a3240;
+    --text: #e6edf3; --muted: #8b949e; --accent: #4493f8;
+    --warning: #f0883e; --opportunity: #3fb950; --suggestion: #58a6ff;
+    --fact: #8b949e; --praise: #bc8cff; --error: #f85149;
+    --chip: #21262d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .spacer { flex: 1; }
+  select, button, input {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; outline: none;
+  }
+  select:hover, button:hover { border-color: var(--accent); }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.1); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  label.inline { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .main { flex: 1; display: grid; grid-template-columns: 1.15fr 1fr; min-height: 0; }
+  .col { min-height: 0; display: flex; flex-direction: column; }
+  .col.left { border-right: 1px solid var(--border); }
+  .col-head {
+    padding: 8px 14px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); border-bottom: 1px solid var(--border); background: var(--panel);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .scroll { overflow-y: auto; padding: 14px; flex: 1; }
+  .scroll::-webkit-scrollbar { width: 10px; }
+  .scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 6px; }
+
+  /* conversation */
+  .turn { margin-bottom: 14px; }
+  .turn.selected .bubble { box-shadow: 0 0 0 2px var(--accent); }
+  .turn-meta { display: flex; gap: 6px; align-items: center; margin: 0 0 4px 2px; flex-wrap: wrap; }
+  .bubble {
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px;
+    background: var(--panel); cursor: pointer; max-width: 92%;
+  }
+  .turn.rep .bubble { margin-left: auto; background: #14233a; border-color: #1f3a5f; }
+  .turn.system .bubble { background: var(--panel2); font-style: italic; color: var(--muted); max-width: 100%; }
+  .speaker { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .turn.rep .speaker { color: #6cb6ff; }
+  .chip {
+    font-size: 10.5px; padding: 1px 7px; border-radius: 20px; background: var(--chip);
+    border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+  }
+  .chip.t { color: var(--accent); border-color: #284b78; }
+  .chip.coord { color: var(--praise); border-color: #3d2f5c; }
+  .chip.gate { color: var(--warning); border-color: #4a3520; }
+  .chip.lat { color: var(--muted); }
+  .chip.lat.high { color: var(--warning); border-color: #4a3520; }
+  .chip.ev { color: var(--opportunity); border-color: #1f3d2a; }
+
+  /* whispers */
+  .whisper {
+    margin: 6px 0 0 18px; border-left: 3px solid var(--suggestion); background: var(--panel2);
+    border-radius: 0 8px 8px 0; padding: 7px 11px; animation: pop .35s ease;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  .whisper.warning { border-color: var(--warning); }
+  .whisper.opportunity { border-color: var(--opportunity); }
+  .whisper.suggestion { border-color: var(--suggestion); }
+  .whisper.fact { border-color: var(--fact); }
+  .whisper.praise { border-color: var(--praise); }
+  .whisper.error { border-color: var(--error); }
+  .whisper .wh-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+  .whisper .wh-type { font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+  .whisper.warning .wh-type { color: var(--warning); }
+  .whisper.opportunity .wh-type { color: var(--opportunity); }
+  .whisper.suggestion .wh-type { color: var(--suggestion); }
+  .whisper.fact .wh-type { color: var(--fact); }
+  .whisper.praise .wh-type { color: var(--praise); }
+  .whisper.error .wh-type { color: var(--error); }
+  .whisper .wh-body { margin-top: 3px; }
+  .whisper .wh-action {
+    margin-top: 5px; display: inline-block; font-size: 11px; color: var(--accent);
+    border: 1px solid #284b78; border-radius: 5px; padding: 1px 8px;
+  }
+  .note { margin: 4px 0 0 18px; font-size: 11.5px; color: var(--muted); font-style: italic; }
+  .why { border-left: 3px solid var(--accent); background: #11203a; border-radius: 0 8px 8px 0;
+         padding: 8px 12px; margin-bottom: 14px; font-size: 13px; }
+  .why .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--accent); font-weight: 700; display:block; margin-bottom: 2px; }
+  .edge { font-size: 11.5px; color: var(--praise); margin: 2px 0 6px; }
+  .agent-doc { font-size: 11.5px; color: var(--muted); margin: 1px 0 4px 16px; }
+  .changed { background: rgba(63,185,80,.16); border-radius: 4px; animation: flash 1.2s ease; }
+  @keyframes flash { from { background: rgba(63,185,80,.5); } to { background: rgba(63,185,80,.16); } }
+  .added-row td { color: var(--opportunity); }
+  .lifetime { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .lifetime b { color: var(--text); }
+  .opt-form label { display: block; font-size: 11px; color: var(--muted); margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .5px; }
+  .opt-form input[type=text], .opt-form input[type=password], .opt-form input[type=number], .opt-form textarea { width: 100%; }
+  .opt-form textarea { height: 90px; font-size: 12px; }
+  .opt-row { display: flex; gap: 10px; }
+  .opt-row > div { flex: 1; }
+  .round-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; background: var(--panel); }
+  .round-card.best { border-color: var(--opportunity); box-shadow: 0 0 0 1px var(--opportunity) inset; }
+  .round-head { display: flex; align-items: center; gap: 10px; }
+  .round-head .rn { font-weight: 700; }
+  .scorebar { flex: 1; height: 10px; background: var(--chip); border-radius: 6px; overflow: hidden; }
+  .scorebar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--warning), var(--opportunity)); }
+  .scoreval { font-weight: 700; min-width: 56px; text-align: right; }
+  .metricline { font-size: 11.5px; color: var(--muted); margin: 4px 0; }
+  .metricline b { color: var(--text); }
+  .crit { color: var(--error); font-weight: 700; }
+  .runbar { display:flex; align-items:center; gap:8px; margin: 6px 0 12px; font-size: 12px; }
+  .spinner { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .best-banner { border-left: 3px solid var(--opportunity); background: #102a18; padding: 10px 12px; border-radius: 0 8px 8px 0; margin-bottom: 10px; }
+  .sess-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--panel); cursor: pointer; }
+  .sess-row:hover { border-color: var(--accent); }
+  .sess-row.sel { border-color: var(--opportunity); box-shadow: 0 0 0 1px var(--opportunity) inset; }
+  .sess-row .nm { font-weight: 600; font-size: 13px; }
+  .sess-row .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .sess-row .sum { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .picked { border-left: 3px solid var(--opportunity); background: #102a18; border-radius: 0 6px 6px 0; padding: 6px 10px; font-size: 12px; margin: 6px 0; }
+  .picked.gen { border-color: var(--praise); background: #1a142b; }
+  .sec-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: var(--panel); }
+  .sec-card h4 { margin: 0 0 6px; font-size: 13px; }
+
+  /* inspector */
+  .tabs { display: flex; gap: 4px; }
+  .tab { padding: 3px 10px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; color: var(--muted); border: 1px solid transparent; }
+  .tab.active { color: var(--text); background: var(--panel2); border-color: var(--border); border-bottom-color: var(--panel2); }
+  .insp-body { padding: 14px; overflow-y: auto; flex: 1; }
+  .insp-body::-webkit-scrollbar { width: 10px; }
+  .insp-body::-webkit-scrollbar-thumb { background: #30363d; border-radius: 6px; }
+  .phase-box { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .phase-title { background: var(--panel); padding: 6px 12px; font-size: 12px; font-weight: 700; display: flex; gap: 8px; align-items: center; }
+  .phase-rows { padding: 8px 12px; }
+  .agent-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #30363d; flex: none; }
+  .dot.spoke { background: var(--opportunity); }
+  .dot.silent { background: #485162; }
+  .dot.error { background: var(--error); }
+  .agent-row .nm { flex: 1; }
+  .agent-row .lat { color: var(--muted); font-size: 11px; }
+  .subtle { color: var(--muted); font-size: 12px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 12.5px; }
+  .kv .k { color: var(--muted); }
+  table.bb { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 4px; }
+  table.bb th, table.bb td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.bb th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  h3.sec { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 16px 0 4px; }
+  .agent-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel); }
+  .agent-card .nm { font-weight: 650; }
+  .agent-card .meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .agent-card .doc { font-size: 12.5px; color: var(--muted); }
+  textarea {
+    width: 100%; height: 60vh; background: #0b0f15; color: #e6edf3; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; resize: vertical;
+  }
+  .status { display: flex; gap: 14px; align-items: center; padding: 6px 16px; background: var(--panel); border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .status b { color: var(--text); }
+  .pill { padding: 1px 8px; border-radius: 20px; background: var(--chip); border: 1px solid var(--border); }
+  .empty { color: var(--muted); text-align: center; margin-top: 40px; font-size: 13px; }
+  .err { color: var(--error); font-size: 12px; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Xubb Agents Simulator</h1>
+  <label class="inline">Scenario <select id="scenarioSel"></select></label>
+  <label class="inline">Suite <select id="suiteSel"></select></label>
+  <label class="inline">Mode
+    <select id="modeSel"><option value="mock">mock</option><option value="real">real (OpenAI)</option></select>
+  </label>
+  <label class="inline">🔑 <input id="apiKey" type="password" placeholder="OpenAI key" style="width:150px" /></label>
+  <button id="saveKeyBtn" title="Save key on the server (.env) so you don't re-paste it">💾 Save</button>
+  <span id="keyStatus" class="pill" style="font-size:11px">key?</span>
+  <button class="primary" id="startBtn">Load ▸</button>
+  <span class="spacer"></span>
+  <button id="resetBtn" disabled>⟲ Reset</button>
+  <button id="stepBtn" disabled>Step ▸</button>
+  <button id="playBtn" disabled>▶ Play</button>
+  <button id="runBtn" disabled>⏭ Run all</button>
+  <label class="inline">Speed <input id="speed" type="range" min="150" max="2000" value="750" style="width:90px" /></label>
+</header>
+
+<div class="main">
+  <div class="col left">
+    <div class="col-head">
+      Conversation &amp; Whispers
+      <span class="spacer" style="flex:1"></span>
+      <span class="legend">
+        <span><i class="swatch" style="background:var(--warning)"></i>warning</span>
+        <span><i class="swatch" style="background:var(--opportunity)"></i>opportunity</span>
+        <span><i class="swatch" style="background:var(--suggestion)"></i>suggestion</span>
+        <span><i class="swatch" style="background:var(--fact)"></i>fact</span>
+      </span>
+    </div>
+    <div class="scroll" id="conversation">
+      <div class="empty">Pick a scenario + suite and press <b>Load</b>, then <b>Step</b> or <b>Play</b>.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-head">
+      <div class="tabs">
+        <div class="tab" data-tab="data">📚 Data</div>
+        <div class="tab active" data-tab="turn">Turn detail</div>
+        <div class="tab" data-tab="bb">Blackboard</div>
+        <div class="tab" data-tab="agents">Agents</div>
+        <div class="tab" data-tab="editor">Suite editor</div>
+        <div class="tab" data-tab="optimize">🔁 Self-Improve</div>
+      </div>
+    </div>
+    <div class="insp-body" id="inspector">
+      <div class="empty">Turn details appear here as you step through the conversation.</div>
+    </div>
+  </div>
+</div>
+
+<div class="status">
+  <span>Turn <b id="stTurn">–</b>/<span id="stTotal">–</span></span>
+  <span>Whispers <b id="stWhispers">0</b></span>
+  <span>Coordination hops (P2) <b id="stHops">0</b></span>
+  <span>Σ modeled latency <b id="stLat">0</b> ms</span>
+  <span class="spacer" style="flex:1"></span>
+  <span id="stMsg" class="pill">idle</span>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const esc = (s) => (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const elHtml = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+
+const ICON = { warning:'⚠️', opportunity:'⚡', suggestion:'💡', fact:'📌', praise:'⭐', error:'⛔' };
+
+const state = {
+  sessionId: null, meta: null, mode: 'mock',
+  turns: [], selected: -1, playing: false, playTimer: null,
+  whisperCount: 0, hopCount: 0, latSum: 0,
+  hasServerKey: false,
+  optimize: { jobId: null, poll: null, job: null, objective: null, defaultObjective: null },
+  data: { checked: false, stats: null, sessions: null, search: '', dbScenario: null, dbSessionName: null, genSuite: null, generating: false },
+};
+
+async function api(path, method='GET', body=null) {
+  const opt = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(path, opt);
+  if (!r.ok) { const t = await r.text(); throw new Error(`${r.status}: ${t}`); }
+  return r.json();
+}
+function setMsg(m, isErr=false) { const e = $('#stMsg'); e.textContent = m; e.style.color = isErr ? 'var(--error)' : ''; }
+
+async function loadLists() {
+  const [scenarios, suites] = await Promise.all([api('/api/scenarios'), api('/api/suites')]);
+  const fill = (sel, items) => { sel.innerHTML = ''; items.forEach(it => { const o = el('option', null, it.name); o.value = it.id; o.title = it.description||''; sel.appendChild(o); }); };
+  fill($('#scenarioSel'), scenarios); fill($('#suiteSel'), suites);
+}
+
+async function refreshKeyStatus() {
+  try {
+    const s = await api('/api/key-status');
+    state.hasServerKey = !!s.has_server_key;
+    const e = $('#keyStatus');
+    e.textContent = s.has_server_key ? ('✓ ' + (s.hint || 'key set')) : 'no key';
+    e.style.color = s.has_server_key ? 'var(--opportunity)' : 'var(--muted)';
+    $('#apiKey').placeholder = s.has_server_key ? '(saved — leave blank)' : 'OpenAI key';
+  } catch (e) {}
+}
+$('#saveKeyBtn').addEventListener('click', async () => {
+  try {
+    await api('/api/key', 'POST', { api_key: $('#apiKey').value || '' });
+    $('#apiKey').value = '';   // never keep the secret in the field — it's on the server now
+    await refreshKeyStatus();
+    setMsg('OpenAI key saved on the server (.env) — you can leave key fields blank now');
+  } catch (e) { setMsg(e.message, true); }
+});
+
+$('#startBtn').addEventListener('click', startSession);
+async function startSession() {
+  pause();
+  try {
+    setMsg('building session…');
+    const body = {
+      scenario_name: $('#scenarioSel').value,
+      suite_name: $('#suiteSel').value,
+      mode: $('#modeSel').value,
+    };
+    if (body.mode === 'real') body.api_key = $('#apiKey').value || null;
+    const res = await api('/api/session', 'POST', body);
+    state.sessionId = res.session_id; state.meta = res.meta; state.mode = body.mode;
+    state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
+    $('#conversation').innerHTML = '';
+    $('#stTotal').textContent = res.meta.scenario.total_steps;
+    ['resetBtn','stepBtn','playBtn','runBtn'].forEach(id => $('#'+id).disabled = false);
+    renderInspector();
+    updateStatus();
+    setMsg('ready — ' + res.meta.suite.name + ' on ' + res.meta.scenario.name);
+    // preload suite JSON into editor
+    try { const suite = await api('/api/suite/' + $('#suiteSel').value); window.__suiteJSON = JSON.stringify(suite, null, 2); } catch(e){}
+  } catch (e) { setMsg(e.message, true); }
+}
+
+$('#stepBtn').addEventListener('click', () => stepOnce());
+async function stepOnce() {
+  if (!state.sessionId) return;
+  try {
+    const res = await api(`/api/session/${state.sessionId}/step`, 'POST');
+    if (res.done) { setMsg('scenario complete'); pause(); return false; }
+    addTurn(res.trace);
+    if (res.finished) { setMsg('scenario complete'); pause(); }
+    return !res.finished;
+  } catch (e) { setMsg(e.message, true); pause(); return false; }
+}
+
+$('#runBtn').addEventListener('click', async () => {
+  if (!state.sessionId) return;
+  pause(); setMsg('running…');
+  try {
+    const res = await api(`/api/session/${state.sessionId}/run`, 'POST');
+    res.traces.forEach(t => addTurn(t, true));
+    setMsg('scenario complete');
+  } catch (e) { setMsg(e.message, true); }
+});
+
+$('#resetBtn').addEventListener('click', async () => {
+  if (!state.sessionId) return;
+  pause();
+  await api(`/api/session/${state.sessionId}/reset`, 'POST');
+  state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
+  $('#conversation').innerHTML = ''; renderInspector(); updateStatus(); setMsg('reset');
+});
+
+$('#playBtn').addEventListener('click', () => state.playing ? pause() : play());
+function play() {
+  state.playing = true; $('#playBtn').textContent = '⏸ Pause';
+  const tick = async () => {
+    if (!state.playing) return;
+    const more = await stepOnce();
+    if (more && state.playing) state.playTimer = setTimeout(tick, +$('#speed').value);
+    else pause();
+  };
+  tick();
+}
+function pause() {
+  state.playing = false; $('#playBtn').textContent = '▶ Play';
+  if (state.playTimer) { clearTimeout(state.playTimer); state.playTimer = null; }
+}
+
+function latency(t) { return state.mode === 'real' ? (t.real_latency_ms || 0) : (t.modeled_latency_ms || 0); }
+function agentDoc(name) { const a = (state.meta && state.meta.agents || []).find(x => x.name === name); return a ? a.doc : ''; }
+// Right-align the coached user's bubbles. Prefer the scenario's explicit
+// user_speaker; fall back to an exact-match set of common self-labels (NOT a
+// loose substring, which would mis-align a counterparty like "SELLER").
+function isUserSpeaker(speaker) {
+  const declared = state.meta && state.meta.scenario && state.meta.scenario.user_speaker;
+  if (declared) return speaker === declared;
+  return ['ME', 'REP', 'AGENT', 'YOU', 'SELF'].includes((speaker || '').toUpperCase());
+}
+// Which Phase-1 agent emitted `evName` this turn (to show the coordination edge)?
+function eventEmitter(trace, evName) {
+  for (const p of (trace.phases || [])) {
+    if (p.phase !== 1) continue;
+    for (const a of (p.agents || [])) { if ((a.events || []).includes(evName)) return a.agent; }
+  }
+  return null;
+}
+
+function addTurn(trace, bulk=false) {
+  state.turns.push(trace);
+  const idx = state.turns.length - 1;
+  trace.insights = trace.insights || [];
+  trace.phases = trace.phases || [];
+  trace.gated = trace.gated || [];
+  trace.skipped = trace.skipped || [];
+  state.whisperCount += trace.insights.length;
+  state.latSum += latency(trace);
+  if (trace.phases.some(p => p.phase === 2)) state.hopCount += 1;
+
+  const wrap = el('div', 'turn');
+  const isUser = trace.segment && isUserSpeaker(trace.segment.speaker);
+  if (!trace.segment) wrap.classList.add('system');
+  else if (isUser) wrap.classList.add('rep');
+  wrap.dataset.idx = idx;
+
+  // meta chips
+  const meta = el('div', 'turn-meta');
+  meta.appendChild(el('span', 'chip t', 'turn ' + trace.turn_index + ' · ' + trace.trigger_type));
+  const coord = trace.phases.some(p => p.phase === 2);
+  if (coord) meta.appendChild(el('span', 'chip coord', 'P1→P2 coordination'));
+  const lat = latency(trace);
+  const latChip = el('span', 'chip lat' + (lat > 500 ? ' high' : ''), Math.round(lat) + 'ms');
+  meta.appendChild(latChip);
+  const evs = new Set(); trace.phases.forEach(p => (p.events_emitted||[]).forEach(e => evs.add(e)));
+  evs.forEach(e => meta.appendChild(el('span', 'chip ev', '⚡ ' + e)));
+  (trace.gated || []).forEach(g => meta.appendChild(el('span', 'chip gate', '⏳ ' + g.agent + ' (' + g.reason + ')')));
+  // variable phase change
+  const vch = trace.blackboard_delta && trace.blackboard_delta.variables || {};
+  Object.keys(vch).forEach(k => meta.appendChild(el('span', 'chip', k + '→' + JSON.stringify(vch[k].to))));
+  wrap.appendChild(meta);
+
+  // bubble
+  const bubble = el('div', 'bubble');
+  if (trace.segment) {
+    bubble.appendChild(el('div', 'speaker', trace.segment.speaker + '  ·  t=' + trace.segment.timestamp + 's'));
+    bubble.appendChild(el('div', null, trace.segment.text));
+  } else {
+    bubble.appendChild(el('div', null, '⏱ ' + (trace.trigger_metadata.silence_duration ? trace.trigger_metadata.silence_duration + 's of silence' : trace.trigger_type + ' tick')));
+  }
+  bubble.addEventListener('click', () => selectTurn(idx));
+  wrap.appendChild(bubble);
+
+  // whispers
+  trace.insights.forEach(ins => {
+    const w = el('div', 'whisper ' + ins.type);
+    const h = el('div', 'wh-head');
+    h.appendChild(el('span', 'wh-type', (ICON[ins.type]||'') + ' ' + ins.type));
+    h.appendChild(el('span', null, ins.agent_name));
+    if (ins.confidence != null) h.appendChild(el('span', null, '· conf ' + ins.confidence));
+    w.appendChild(h);
+    w.appendChild(el('div', 'wh-body', ins.content));
+    if (ins.action_label) w.appendChild(el('div', 'wh-action', ins.action_label));
+    wrap.appendChild(w);
+  });
+
+  if (trace.note) wrap.appendChild(el('div', 'note', '📝 ' + trace.note));
+
+  $('#conversation').appendChild(wrap);
+  if (!bulk) wrap.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  selectTurn(idx, false);
+  updateStatus();
+}
+
+function selectTurn(idx, scroll=true) {
+  state.selected = idx;
+  document.querySelectorAll('.turn').forEach(t => t.classList.toggle('selected', +t.dataset.idx === idx));
+  if (activeTab === 'turn' || activeTab === 'bb') renderInspector();
+}
+
+function updateStatus() {
+  $('#stTurn').textContent = state.turns.length ? state.turns[state.turns.length-1].turn_index : '–';
+  $('#stWhispers').textContent = state.whisperCount;
+  $('#stHops').textContent = state.hopCount;
+  $('#stLat').textContent = Math.round(state.latSum);
+}
+
+/* ---------- inspector tabs ---------- */
+let activeTab = 'turn';
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+  activeTab = tab.dataset.tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+  renderInspector();
+}));
+
+function renderInspector() {
+  const box = $('#inspector');
+  if (activeTab === 'turn') return renderTurnTab(box);
+  if (activeTab === 'bb') return renderBlackboardTab(box);
+  if (activeTab === 'agents') return renderAgentsTab(box);
+  if (activeTab === 'editor') return renderEditorTab(box);
+  if (activeTab === 'optimize') return renderOptimizeTab(box);
+  if (activeTab === 'data') return renderDataTab(box);
+}
+
+function renderTurnTab(box) {
+  box.innerHTML = '';
+  if (state.selected < 0 || !state.turns[state.selected]) { box.appendChild(el('div','empty','Step through the conversation to inspect a turn.')); return; }
+  const t = state.turns[state.selected];
+
+  const head = el('div');
+  head.innerHTML = `<b>Turn ${t.turn_index}</b> · trigger <span class="chip t">${t.trigger_type}</span> · sim t=${t.sim_time}s`;
+  box.appendChild(head);
+
+  // "Why this turn" — the authored teaching note, front and center.
+  if (t.note) {
+    const why = el('div', 'why');
+    why.appendChild(el('span', 'lbl', 'Why this turn'));
+    why.appendChild(el('span', null, t.note));
+    box.appendChild(why);
+  }
+
+  // latency + coordination depth
+  const latLine = el('div', 'subtle'); latLine.style.margin = '6px 0 12px';
+  const parts = (t.phase_latencies||[]).map(p => `P${p.phase}: ${Math.round(p.modeled_latency_ms)}ms`).join('  +  ');
+  const hop = (t.phase_latencies||[]).find(p => p.phase === 2);
+  latLine.innerHTML = `Modeled latency: <b style="color:var(--text)">${Math.round(t.modeled_latency_ms)}ms</b>` +
+    ((t.phase_latencies||[]).length > 1 ? `  (${parts})` : '') +
+    (state.mode === 'real' && t.real_latency_ms != null ? `  · wall-clock: ${Math.round(t.real_latency_ms)}ms` : '');
+  box.appendChild(latLine);
+  if (hop) {
+    const cd = el('div', 'edge');
+    cd.textContent = `🔗 coordination depth: 1 hop (Phase 2 adds a second sequential LLM round-trip, +${Math.round(hop.modeled_latency_ms)}ms)`;
+    box.appendChild(cd);
+  }
+
+  // phases
+  (t.phases||[]).forEach(p => {
+    const pb = el('div', 'phase-box');
+    const pt = el('div', 'phase-title');
+    pt.appendChild(el('span', null, 'Phase ' + p.phase));
+    if (p.phase === 2) pt.appendChild(el('span', 'chip coord', 'event-triggered'));
+    (p.events_emitted||[]).forEach(e => pt.appendChild(el('span', 'chip ev', '⚡ ' + e)));
+    pb.appendChild(pt);
+
+    // Phase-2 coordination edge: show what woke it and who emitted it.
+    if (p.phase === 2) {
+      const p1 = (t.phases||[]).find(x => x.phase === 1);
+      const wake = (p1 && p1.events_emitted || []);
+      wake.forEach(ev => {
+        const emitter = eventEmitter(t, ev) || 'a Phase-1 agent';
+        pb.appendChild(el('div', 'edge', `↳ woken by “${ev}” (emitted by ${emitter} in Phase 1) — events are transient, this exists only this turn`));
+      });
+    }
+
+    const rows = el('div', 'phase-rows');
+    (p.agents||[]).forEach(a => {
+      const r = el('div', 'agent-row');
+      const dotCls = a.status === 'error' ? 'error' : (a.spoke ? 'spoke' : 'silent');
+      r.appendChild(el('span', 'dot ' + dotCls));
+      r.appendChild(el('span', 'nm', a.agent));
+      const tags = [a.spoke ? 'spoke' : 'silent'];
+      if ((a.events||[]).length) tags.push('emit:' + a.events.join(','));
+      if ((a.facts||[]).length) tags.push('+' + a.facts.length + ' fact');
+      if (Object.keys(a.variable_updates||{}).length) tags.push('vars:' + Object.keys(a.variable_updates).join(','));
+      if (Object.keys(a.queue_pushes||{}).length) tags.push('queue+');
+      if ((a.memory_updates_keys||[]).length) tags.push('mem:' + a.memory_updates_keys.join(','));
+      r.appendChild(el('span', 'subtle', tags.join(' · ')));
+      rows.appendChild(r);
+      // Attach the lesson to the mechanic for agents that did something.
+      if (a.spoke) { const d = agentDoc(a.agent); if (d) rows.appendChild(el('div', 'agent-doc', d)); }
+    });
+
+    // Cooldown-gated agents for THIS phase, with the causal chain.
+    (t.gated||[]).filter(g => g.phase === p.phase).forEach(g => {
+      const r = el('div', 'agent-row');
+      r.appendChild(el('span', 'dot'));
+      r.appendChild(el('span', 'nm', g.agent));
+      r.appendChild(el('span', 'chip gate', '⏳ cooldown'));
+      rows.appendChild(r);
+      let chain = 'Eligible, but its cooldown has not elapsed.';
+      if (g.last_turn != null) {
+        chain = `Last ran on turn ${g.last_turn} (${g.last_spoke ? 'spoke' : 'stayed SILENT'}). ` +
+          (g.last_spoke ? '' : 'A silent run still starts the cooldown — so it is gated now.');
+      }
+      const cc = el('div', 'agent-doc'); cc.style.color = 'var(--warning)'; cc.textContent = '↳ ' + chain;
+      rows.appendChild(cc);
+    });
+    pb.appendChild(rows);
+    box.appendChild(pb);
+  });
+
+  // skipped — render as a trigger-routing map, not a flat error
+  if (t.skipped && t.skipped.length) {
+    const mism = t.skipped.filter(s => s.reason === 'trigger_type_mismatch');
+    const other = t.skipped.filter(s => s.reason !== 'trigger_type_mismatch');
+    box.appendChild(el('h3', 'sec', 'Not eligible (routing)'));
+    if (!(t.phases||[]).length) {
+      box.appendChild(el('div', 'subtle', `No agent subscribes to trigger=“${t.trigger_type}”, so none were even evaluated. Trigger type is routing: an agent only runs for triggers in its trigger_types.`));
+    }
+    other.forEach(s => box.appendChild(el('div', 'subtle', '• ' + s.agent + ' — ' + s.reason)));
+    if (mism.length) box.appendChild(el('div', 'subtle', `• ${mism.map(s=>s.agent).join(', ')} — wrong trigger type for this turn (e.g. an event/silence agent on a turn_based turn)`));
+  }
+}
+
+function renderBlackboardTab(box) {
+  box.innerHTML = '';
+  const turn = state.selected >= 0 ? state.turns[state.selected] : state.turns[state.turns.length - 1];
+  if (!turn) { box.appendChild(el('div','empty','Blackboard state appears here once you step.')); return; }
+  const bb = turn.blackboard_after || {};
+  const delta = turn.blackboard_delta || { variables:{}, facts_added:[], queues:{}, memory:[] };
+
+  box.appendChild(el('div', 'subtle', `State as of turn ${turn.turn_index}. Green = changed this turn.`));
+
+  // Persistent containers — these survive across turns.
+  box.appendChild(el('h3', 'sec', 'Variables (persist)'));
+  const vkv = el('div', 'kv');
+  Object.entries(bb.variables||{}).filter(([k]) => !k.startsWith('sys.')).forEach(([k,v]) => {
+    const changed = k in (delta.variables||{});
+    const kk = el('span', 'k' + (changed ? ' changed' : ''), k);
+    const vv = el('span', changed ? 'changed' : null, JSON.stringify(v) + (changed ? `  ⟵ ${JSON.stringify(delta.variables[k].from)}` : ''));
+    vkv.appendChild(kk); vkv.appendChild(vv);
+  });
+  if (!vkv.children.length) vkv.appendChild(el('span','subtle','(none)'));
+  box.appendChild(vkv);
+
+  box.appendChild(el('h3', 'sec', 'Facts (persist)'));
+  if ((bb.facts||[]).length) {
+    const added = new Set((delta.facts_added||[]).map(f => f.type + '|' + (f.key||'')));
+    const tbl = el('table', 'bb');
+    tbl.innerHTML = '<tr><th>type</th><th>key</th><th>value</th><th>conf</th><th>prio</th><th>by</th></tr>';
+    bb.facts.forEach(f => {
+      const tr = el('tr');
+      if (added.has(f.type + '|' + (f.key||''))) tr.className = 'added-row changed';
+      [f.type, f.key||'–', JSON.stringify(f.value), f.confidence, f.priority, f.source_agent].forEach(c => tr.appendChild(el('td', null, String(c))));
+      tbl.appendChild(tr);
+    });
+    box.appendChild(tbl);
+  } else box.appendChild(el('div','subtle','(none)'));
+
+  box.appendChild(el('h3', 'sec', 'Queues (persist)'));
+  const qkeys = Object.keys(bb.queues||{});
+  if (qkeys.length) qkeys.forEach(q => {
+    const changed = q in (delta.queues||{});
+    const row = el('div', changed ? 'changed' : null);
+    row.appendChild(el('span', 'subtle', `${q} (${bb.queues[q].length}): `));
+    row.appendChild(el('span', null, JSON.stringify(bb.queues[q])));
+    box.appendChild(row);
+  });
+  else box.appendChild(el('div','subtle','(none)'));
+
+  box.appendChild(el('h3', 'sec', 'Memory — agent-private (persist)'));
+  const mkeys = Object.keys(bb.memory||{});
+  if (mkeys.length) {
+    const changedAgents = new Set((delta.memory||[]).map(m => m.agent_id));
+    const k = el('div','kv');
+    mkeys.forEach(m => {
+      const ch = changedAgents.has(m);
+      k.appendChild(el('span','k' + (ch ? ' changed' : ''), m));
+      k.appendChild(el('span', ch ? 'changed' : null, JSON.stringify(bb.memory[m])));
+    });
+    box.appendChild(k);
+  } else box.appendChild(el('div','subtle','(none)'));
+
+  // The events-transient lesson, made explicit.
+  box.appendChild(el('h3', 'sec', 'Events (transient — NOT stored here)'));
+  const evNote = el('div', 'lifetime');
+  const evs = []; (turn.phases||[]).forEach(p => (p.events_emitted||[]).forEach(e => evs.push(e)));
+  evNote.innerHTML = evs.length
+    ? `This turn emitted <b>${[...new Set(evs)].join(', ')}</b>. Events live for one coordination cycle and are <b>cleared at the end of every turn</b> — that is why they never appear on the blackboard above (unlike facts/variables/queues, which persist).`
+    : `No events this turn. Events are <b>transient</b>: emitted to wake Phase-2 subscribers, then cleared. Cross-turn coordination must use the persistent containers above.`;
+  box.appendChild(evNote);
+}
+
+function renderAgentsTab(box) {
+  box.innerHTML = '';
+  if (!state.meta) { box.appendChild(el('div','empty','Load a session to see the agent roster.')); return; }
+  state.meta.agents.forEach(a => {
+    const c = el('div', 'agent-card');
+    c.appendChild(el('div', 'nm', a.name));
+    const m = el('div', 'meta');
+    m.appendChild(el('span', 'chip t', a.triggers.join(' / ')));
+    m.appendChild(el('span', 'chip', 'cooldown ' + a.cooldown + 's'));
+    m.appendChild(el('span', 'chip', 'priority ' + a.priority));
+    if (a.keywords.length) m.appendChild(el('span', 'chip', 'kw: ' + a.keywords.join(', ')));
+    if (a.subscribed_events.length) m.appendChild(el('span', 'chip ev', '↘ ' + a.subscribed_events.join(', ')));
+    m.appendChild(el('span', 'chip lat', '~' + a.latency_ms + 'ms'));
+    c.appendChild(m);
+    if (a.doc) c.appendChild(el('div', 'doc', a.doc));
+    box.appendChild(c);
+  });
+}
+
+function renderEditorTab(box) {
+  box.innerHTML = '';
+  box.appendChild(el('div', 'subtle', 'Edit the suite JSON (agents + mock rules) and Apply to restart the session with your changes. The scenario stays the same.'));
+  const ta = el('textarea');
+  ta.value = window.__suiteJSON || '{}';
+  box.appendChild(ta);
+  const bar = el('div'); bar.style.marginTop = '8px'; bar.style.display = 'flex'; bar.style.gap = '8px';
+  const validateBtn = el('button', null, 'Validate'); const applyBtn = el('button', 'primary', 'Apply & restart');
+  const msg = el('span', 'subtle'); msg.style.alignSelf = 'center';
+  bar.appendChild(validateBtn); bar.appendChild(applyBtn); bar.appendChild(msg);
+  box.appendChild(bar);
+
+  let parsed = null;
+  function parse() { try { parsed = JSON.parse(ta.value); return true; } catch(e){ msg.textContent = 'JSON error: ' + e.message; msg.className='err'; return false; } }
+
+  validateBtn.addEventListener('click', async () => {
+    if (!parse()) return;
+    const scenario = await api('/api/scenario/' + $('#scenarioSel').value);
+    try {
+      const res = await api('/api/validate', 'POST', { suite: parsed, scenario });
+      msg.className = res.ok ? 'subtle' : 'err';
+      msg.textContent = res.ok ? `OK — ${res.agents.length} agents parsed` : res.errors.join('; ');
+    } catch(e){ msg.className='err'; msg.textContent = e.message; }
+  });
+
+  applyBtn.addEventListener('click', async () => {
+    if (!parse()) return;
+    pause();
+    window.__suiteJSON = ta.value;
+    const scenario = await api('/api/scenario/' + $('#scenarioSel').value);
+    try {
+      const res = await api('/api/session', 'POST', { suite: parsed, scenario, mode: $('#modeSel').value, api_key: $('#apiKey').value || null });
+      state.sessionId = res.session_id; state.meta = res.meta;
+      state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
+      $('#conversation').innerHTML = ''; updateStatus();
+      msg.className='subtle'; msg.textContent = 'applied — session restarted'; setMsg('suite applied — session restarted');
+    } catch(e){ msg.className='err'; msg.textContent = e.message; }
+  });
+}
+
+/* ---------- Self-Improve tab ---------- */
+function renderOptimizeTab(box) {
+  box.innerHTML = '';
+  if (!state.sessionId) { box.appendChild(el('div','empty','Load a session first — Self-Improve optimizes the loaded suite against the loaded scenario.')); return; }
+  const opt = state.optimize;
+
+  const intro = el('div','subtle'); intro.style.marginBottom = '10px';
+  intro.innerHTML = "Runs the scenario through the LLM → an AI judge scores it against the per-turn expectations + anti-spam/coordination rules → an AI rewrites the prompts → repeat, keeping the best. <b>Runs in real mode: uses your OpenAI key & budget.</b>";
+  box.appendChild(intro);
+
+  if (opt.defaultObjective == null) {
+    opt.defaultObjective = '';
+    api('/api/optimize/default-objective').then(r => { opt.defaultObjective = r.objective; if (activeTab === 'optimize' && !(opt.job && opt.job.status === 'running')) renderInspector(); }).catch(()=>{});
+  }
+
+  const running = !!(opt.job && opt.job.status === 'running');
+  const objVal = opt.objective != null ? opt.objective : (opt.defaultObjective || '');
+  const form = el('div','opt-form');
+  form.innerHTML = `
+    <label>Objective — what "better" means</label>
+    <textarea id="optObjective" ${running?'disabled':''}>${esc(objVal)}</textarea>
+    <div class="opt-row">
+      <div><label>Target score</label><input type="number" id="optTarget" value="85" min="1" max="100" ${running?'disabled':''}></div>
+      <div><label>Max rounds</label><input type="number" id="optRounds" value="5" min="1" max="8" ${running?'disabled':''}></div>
+      <div><label>Optimizer model</label><input type="text" id="optModel" value="gpt-4o" ${running?'disabled':''}></div>
+    </div>
+    <label>OpenAI API key (required — agents run for real)</label>
+    <input type="password" id="optKey" placeholder="sk-..." value="${esc($('#apiKey') ? $('#apiKey').value : '')}" ${running?'disabled':''}>`;
+  box.appendChild(form);
+
+  const startBtn = el('button','primary', running ? 'Running…' : '🔁 Start Self-Improvement');
+  startBtn.disabled = running; startBtn.style.marginTop = '8px';
+  startBtn.addEventListener('click', startOptimize);
+  box.appendChild(startBtn);
+
+  if (opt.job) renderOptimizeProgress(box, opt.job);
+}
+
+async function startOptimize() {
+  const opt = state.optimize;
+  opt.objective = $('#optObjective').value;
+  const key = $('#optKey').value || ($('#apiKey') ? $('#apiKey').value : '');
+  const target = +$('#optTarget').value || 85;
+  const rounds = +$('#optRounds').value || 5;
+  const model = $('#optModel').value || 'gpt-4o';
+  if (!key && !state.hasServerKey) { setMsg('Self-Improve needs an OpenAI API key (paste one and 💾 Save)', true); return; }
+  try {
+    setMsg('starting self-improvement…');
+    const res = await api('/api/optimize','POST',{ session_id: state.sessionId, objective: opt.objective, target_score: target, max_rounds: rounds, optimizer_model: model, api_key: key });
+    opt.jobId = res.job_id;
+    opt.job = { status:'running', round:0, max_rounds:rounds, rounds:[] };
+    if (activeTab==='optimize') renderInspector();
+    if (opt.poll) clearInterval(opt.poll);
+    opt.poll = setInterval(pollOptimize, 2000);
+    pollOptimize();
+  } catch(e){ setMsg(e.message, true); }
+}
+
+async function pollOptimize() {
+  const opt = state.optimize;
+  if (!opt.jobId) return;
+  try {
+    const job = await api('/api/optimize/' + opt.jobId);
+    opt.job = job;
+    if (activeTab === 'optimize') renderInspector();
+    if (job.status !== 'running') {
+      clearInterval(opt.poll); opt.poll = null;
+      setMsg(job.status === 'done' ? `self-improvement done — best ${Math.round(job.result.best_score)}/100` : ('self-improve error: ' + job.error), job.status !== 'done');
+    } else { setMsg(`self-improving… round ${job.round}/${job.max_rounds}`); }
+  } catch(e){ clearInterval(opt.poll); opt.poll = null; setMsg(e.message, true); }
+}
+
+function renderOptimizeProgress(box, job) {
+  if (job.status === 'running') {
+    const bar = el('div','runbar');
+    bar.appendChild(el('span','spinner'));
+    bar.appendChild(el('span', null, `Round ${job.round || 1} of ${job.max_rounds} — running scenario, judging, rewriting…`));
+    box.appendChild(bar);
+  }
+  if (job.error) box.appendChild(el('div','err','Error: ' + job.error));
+
+  if (job.result) {
+    const b = el('div','best-banner');
+    b.innerHTML = `<b>Best: ${Math.round(job.result.best_score)}/100</b> &nbsp;(round ${job.result.best_round} of ${job.result.total_rounds})`;
+    box.appendChild(b);
+    const saveBtn = el('button','primary','💾 Save improved suite'); saveBtn.style.marginRight = '8px';
+    saveBtn.addEventListener('click', saveOptimized);
+    box.appendChild(saveBtn);
+    const dl = el('button', null, '⬇ Report');
+    dl.addEventListener('click', () => downloadText('improvement_report.md', job.result.report_md));
+    box.appendChild(dl);
+
+    // Step (b): what this run taught the system (auto-folded into the store).
+    const lr = job.result.learnings;
+    if (lr) {
+      const nNew = (lr.new || []).length, nRein = (lr.reinforced || []).length;
+      const lb = el('div', 'picked gen'); lb.style.marginTop = '10px';
+      lb.innerHTML = `📚 Learned: <b>${nNew}</b> new, <b>${nRein}</b> reinforced` +
+        (lr.active_count != null ? ` · <b>${lr.active_count}</b> active principles now feed future generation & optimization` : '') +
+        (lr.error ? ` <span class="err">(${esc(lr.error)})</span>` : '');
+      box.appendChild(lb);
+      (lr.new || []).forEach(c => box.appendChild(el('div', 'agent-doc', `＋ [${c.kind}] ${c.principle}`)));
+      (lr.reinforced || []).forEach(c => box.appendChild(el('div', 'agent-doc', `↑ [${c.kind}] ${c.principle} (support ${c.support})`)));
+    }
+  }
+
+  const rounds = job.rounds || [];
+  const bestRound = job.result ? job.result.best_round : rounds.reduce((a,r)=> (r.score>(a.score==null?-1:a.score)?r:a), {score:-1, round:-1}).round;
+  rounds.slice().reverse().forEach(r => {
+    const card = el('div','round-card' + (r.round === bestRound ? ' best' : ''));
+    if (r.error) { card.appendChild(el('div','err',`Round ${r.round}: ${r.error}`)); box.appendChild(card); return; }
+    const head = el('div','round-head');
+    head.appendChild(el('span','rn','Round ' + r.round));
+    const sb = el('div','scorebar'); const fill = el('i'); fill.style.width = Math.max(0, Math.min(100, r.score||0)) + '%'; sb.appendChild(fill); head.appendChild(sb);
+    head.appendChild(el('span','scoreval', Math.round(r.score||0) + '/100'));
+    card.appendChild(head);
+    const m = r.metrics || {};
+    const broken = (m.coordination_broken || []).length;
+    const ml = el('div','metricline');
+    ml.innerHTML = `whispers/turn <b>${m.avg_whispers_per_turn}</b> (max ${m.max_whispers_per_turn}) · redundant <b>${m.within_turn_redundant_pairs}</b> · coordination ${broken ? '<span class="crit">BROKEN ('+broken+')</span>' : '<b>ok</b>'}`;
+    card.appendChild(ml);
+    const j = r.judgement || {};
+    if (j.summary) card.appendChild(el('div','subtle', j.summary));
+    (j.per_agent || []).filter(p => p.problems && p.problems.length && !['good','silent_ok'].includes(p.verdict)).forEach(p => {
+      card.appendChild(el('div','agent-doc', `${p.agent_id} [${p.verdict}]: ${p.problems.join('; ')}`));
+    });
+    if (r.rewrite) card.appendChild(el('div','edge', `✎ rewrote ${(r.rewrite.patched_agents||[]).join(', ')} — ${r.rewrite.rationale||''}`));
+    box.appendChild(card);
+  });
+}
+
+async function saveOptimized() {
+  const opt = state.optimize;
+  try { const res = await api('/api/optimize/' + opt.jobId + '/save','POST'); await loadLists(); setMsg('saved: ' + res.suite_id + ' (now in the Suite dropdown)'); }
+  catch(e){ setMsg(e.message, true); }
+}
+
+function downloadText(name, text) {
+  const blob = new Blob([text || ''], { type: 'text/markdown' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- Data tab: browse real sessions + generate agents ---------- */
+function renderDataTab(box) {
+  box.innerHTML = '';
+  const d = state.data;
+  if (!d.checked) {
+    d.checked = true;
+    box.appendChild(el('div','subtle','Checking for production database…'));
+    api('/api/db/available').then(r => { d.available = r.available; d.stats = r.available ? r.stats : null; if (r.available) loadDbSessions(); else if (activeTab==='data') renderInspector(); }).catch(() => { d.available = false; if (activeTab==='data') renderInspector(); });
+    return;
+  }
+  if (!d.available) {
+    box.appendChild(el('div','empty','No production DB found at sim/db/xubb.db. Drop your xubb.db there to browse real conversations and optimize against them.'));
+    return;
+  }
+
+  const stat = el('div','subtle'); stat.style.marginBottom = '8px';
+  stat.innerHTML = `<b>${d.stats.sessions}</b> sessions · <b>${d.stats.segments.toLocaleString()}</b> segments · <b>${d.stats.whispers.toLocaleString()}</b> production whispers · <b>${d.stats.prompts}</b> prompts.<br><span style="color:var(--warning)">Read-only & local — only transcript text sent to OpenAI during a real run leaves your machine.</span>`;
+  box.appendChild(stat);
+
+  if (d.dbScenario) box.appendChild(elHtml('div','picked', `✓ scenario: <b>${esc(d.dbScenario.name)}</b> — ${d.dbScenario.steps.length} turns`));
+  if (d.genSuite) box.appendChild(elHtml('div','picked gen', `🧪 suite: <b>${esc(d.genSuite.name)}</b> — ${d.genSuite.agents.length} agents`));
+  if (d.dbScenario && d.genSuite) {
+    const lc = el('button','primary','▶ Load real session + generated suite');
+    lc.style.margin = '4px 0 12px'; lc.addEventListener('click', loadCombo); box.appendChild(lc);
+  }
+
+  // 1 · browse
+  const a = el('div','sec-card');
+  a.appendChild(elHtml('h4', null, '1 · Pick a real conversation'));
+  const sb = el('input'); sb.type='text'; sb.placeholder='search by name / class / summary, Enter…'; sb.value=d.search; sb.style.width='100%';
+  sb.addEventListener('keydown', e => { if (e.key==='Enter'){ d.search=sb.value; loadDbSessions(); } });
+  a.appendChild(sb);
+  const list = el('div');
+  // Cap the list height so the Generate section below stays reachable (don't bury
+  // it under 60 session rows).
+  list.style.cssText = 'margin-top:8px;max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px';
+  if (d.sessions == null) list.appendChild(el('div','subtle','loading…'));
+  else if (!d.sessions.length) list.appendChild(el('div','subtle','no sessions'));
+  else {
+    list.appendChild(el('div','subtle', `${d.sessions.length} sessions — scroll within this box; the Generate panel is below.`));
+    d.sessions.forEach(s => list.appendChild(sessionRow(s)));
+  }
+  a.appendChild(list);
+  box.appendChild(a);
+
+  // 2 · generate
+  const b = el('div','sec-card');
+  b.appendChild(elHtml('h4', null, '2 · Generate an agent suite'));
+  b.appendChild(el('div','subtle','Describe the copilot. The generator writes specialized, silence-disciplined agents (and wires event coordination) as a starting point — then Self-Improve refines them.'));
+  const goal = el('textarea'); goal.id='genGoal'; goal.style.height='70px'; goal.style.marginTop='6px';
+  goal.placeholder='e.g. A real-time copilot for executive SAP sales calls: catch client objections and buying signals, track commitments, suggest the sharpest next question.';
+  goal.value = d.goalDraft || '';
+  b.appendChild(goal);
+  const row = el('div','opt-row'); row.style.marginTop='6px';
+  row.innerHTML = `<div><label style="font-size:11px;color:var(--muted)">Model</label><input type="text" id="genModel" value="gpt-4o"></div><div><label style="font-size:11px;color:var(--muted)">OpenAI key</label><input type="password" id="genKey" value="${esc($('#apiKey') ? $('#apiKey').value : '')}"></div>`;
+  b.appendChild(row);
+  const useCtx = el('label','inline'); useCtx.style.marginTop='6px';
+  useCtx.innerHTML = `<input type="checkbox" id="genUseCtx" ${d.dbScenario?'checked':''}> design for the picked session (use its transcript + production whispers as context)`;
+  b.appendChild(useCtx);
+  const gb = el('button','primary', d.generating ? 'Generating…' : '🧪 Generate suite'); gb.disabled=d.generating; gb.style.display='block'; gb.style.marginTop='8px';
+  gb.addEventListener('click', doGenerate);
+  b.appendChild(gb);
+  if (d.genSuite) {
+    const gv = el('div'); gv.style.marginTop='8px';
+    d.genSuite.agents.forEach(ag => {
+      const mode = (ag.trigger_config||{}).mode; const ms = Array.isArray(mode) ? mode.join('/') : mode;
+      gv.appendChild(elHtml('div','agent-doc', `<b>${esc(ag.name)}</b> [${esc(ms)}] — ${esc((ag.text||'').slice(0,130))}…`));
+    });
+    b.appendChild(gv);
+    const lint = d.genSuite._lint || [];
+    if (lint.length) {
+      const lb = el('div'); lb.style.marginTop='8px';
+      lb.appendChild(elHtml('div','subtle', '<b style="color:var(--warning)">Auto-fixed firing issues so the agents actually trigger:</b>'));
+      lint.forEach(f => lb.appendChild(el('div','agent-doc', (f.startsWith('WARNING') ? '⚠ ' : '✓ ') + f)));
+      b.appendChild(lb);
+    }
+  }
+  box.appendChild(b);
+}
+
+function sessionRow(s) {
+  const row = el('div','sess-row' + (state.data.dbSessionId === s.session_id ? ' sel' : ''));
+  row.appendChild(el('div','nm', s.name));
+  const m = el('div','meta');
+  m.appendChild(el('span','chip', s.segments + ' segs'));
+  if (s.classification) m.appendChild(el('span','chip', s.classification));
+  (s.active_agents||[]).slice(0,2).forEach(ag => m.appendChild(el('span','chip ev', ag)));
+  row.appendChild(m);
+  if (s.summary) row.appendChild(el('div','sum', s.summary.slice(0,140)));
+  const ctl = el('div'); ctl.style.cssText='margin-top:6px;display:flex;gap:6px;align-items:center';
+  ctl.appendChild(el('span','subtle','turns:'));
+  const turns = el('input'); turns.type='number'; turns.value=40; turns.min=5; turns.max=200; turns.style.width='64px';
+  ctl.appendChild(turns);
+  const use = el('button', null, 'Use as scenario →');
+  use.addEventListener('click', e => { e.stopPropagation(); useAsScenario(s, +turns.value || 40); });
+  ctl.appendChild(use);
+  row.appendChild(ctl);
+  return row;
+}
+
+async function loadDbSessions() {
+  const d = state.data; d.sessions = null;
+  if (activeTab==='data') renderInspector();
+  try { d.sessions = await api('/api/db/sessions?search=' + encodeURIComponent(d.search||'')); }
+  catch(e){ d.sessions = []; setMsg(e.message, true); }
+  if (activeTab==='data') renderInspector();
+}
+
+async function useAsScenario(s, maxTurns) {
+  try {
+    setMsg('importing session…');
+    const scen = await api(`/api/db/session/${s.session_id}/scenario?max_turns=${maxTurns}`);
+    state.data.dbScenario = scen; state.data.dbSessionId = s.session_id; state.data.dbSessionName = s.name;
+    setMsg(`scenario ready: ${scen.name} (${scen.steps.length} turns)`);
+    if (activeTab==='data') renderInspector();
+  } catch(e){ setMsg(e.message, true); }
+}
+
+async function doGenerate() {
+  const d = state.data;
+  const goal = $('#genGoal').value.trim(); d.goalDraft = goal;
+  const key = $('#genKey').value || ($('#apiKey') ? $('#apiKey').value : '');
+  const model = $('#genModel').value || 'gpt-4o';
+  const useCtx = $('#genUseCtx') && $('#genUseCtx').checked;
+  if (!goal) { setMsg('describe the copilot goal first', true); return; }
+  if (!key && !state.hasServerKey) { setMsg('agent generation needs an OpenAI key (paste one and 💾 Save)', true); return; }
+  d.generating = true; if (activeTab==='data') renderInspector();
+  setMsg('generating agents… (a few seconds)');
+  try {
+    const body = { goal, api_key: key, model };
+    if (useCtx && d.dbSessionId) body.db_session_id = d.dbSessionId;
+    const res = await api('/api/generate-suite','POST', body);
+    d.genSuite = res.suite; setMsg(`generated ${res.suite.agents.length} agents — review below, then Load`);
+  } catch(e){ setMsg(e.message, true); }
+  d.generating = false; if (activeTab==='data') renderInspector();
+}
+
+async function loadCombo() {
+  const d = state.data;
+  if (!d.dbScenario || !d.genSuite) { setMsg('need both a scenario and a generated suite', true); return; }
+  pause();
+  try {
+    const mode = $('#modeSel').value;
+    const body = { scenario: d.dbScenario, suite: d.genSuite, mode };
+    if (mode === 'real') body.api_key = $('#apiKey').value || null;
+    const res = await api('/api/session','POST', body);
+    state.sessionId = res.session_id; state.meta = res.meta; state.mode = mode;
+    state.turns=[]; state.selected=-1; state.whisperCount=0; state.hopCount=0; state.latSum=0;
+    $('#conversation').innerHTML=''; $('#stTotal').textContent = res.meta.scenario.total_steps;
+    ['resetBtn','stepBtn','playBtn','runBtn'].forEach(id => $('#'+id).disabled = false);
+    window.__suiteJSON = JSON.stringify(d.genSuite, null, 2);
+    updateStatus();
+    activeTab='turn'; document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab==='turn'));
+    renderInspector();
+    setMsg(`loaded ${d.genSuite.name} on ${d.dbScenario.name}${mode==='mock' ? ' — mock mode: generated agents stay silent (no rules). Switch to real mode or run Self-Improve.' : ' — Step/Play to see real whispers.'}`);
+  } catch(e){ setMsg(e.message, true); }
+}
+
+loadLists().then(() => setMsg('ready to load')).catch(e => setMsg(e.message, true));
+refreshKeyStatus();
+</script>
+</body>
+</html>

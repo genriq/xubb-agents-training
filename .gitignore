@@ -1,0 +1,22 @@
+# Secrets — never commit the API key.
+.env
+
+# The production database is private conversation data — NEVER commit it.
+sim/db/
+*.db
+*.db-wal
+*.db-shm
+
+# Generated/optimized artifacts
+sim/data/reports/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Temp
+_*.json
+_ui.js

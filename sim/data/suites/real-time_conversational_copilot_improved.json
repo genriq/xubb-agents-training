@@ -1,0 +1,88 @@
+{
+  "name": "Real-Time Conversational Copilot (improved)",
+  "description": "A suite of specialized agents providing concise, context-aware guidance during live conversations.",
+  "agents": [
+    {
+      "id": "greeting-detector",
+      "name": "Greeting Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 5,
+        "keywords": [
+          "hi",
+          "hello",
+          "hey"
+        ],
+        "subscribed_events": [],
+        "priority": 1
+      },
+      "text": "Detect if the most recent turn includes a greeting. If it does, return has_insight=true with a type 'opportunity' to acknowledge the greeting warmly. Otherwise, return has_insight=false."
+    },
+    {
+      "id": "repetition-detector",
+      "name": "Repetition Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 5,
+        "keywords": [],
+        "subscribed_events": [],
+        "priority": 1
+      },
+      "text": "Identify if the user repeats a phrase from the speaker's recent turn. If repetition is detected, return has_insight=true with a type 'suggestion' to acknowledge or build on the repeated phrase. Otherwise, return has_insight=false."
+    },
+    {
+      "id": "status-update-prompt",
+      "name": "Status Update Prompt",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 10,
+        "keywords": [
+          "how are you",
+          "what's up",
+          "status"
+        ],
+        "subscribed_events": [],
+        "priority": 1
+      },
+      "text": "If the most recent turn includes a status inquiry, return has_insight=true with a type 'opportunity' to prompt a brief personal or project update. Otherwise, return has_insight=false."
+    },
+    {
+      "id": "confirmation-seeker",
+      "name": "Confirmation Seeker",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 10,
+        "keywords": [
+          "okay",
+          "alright",
+          "sure"
+        ],
+        "subscribed_events": [],
+        "priority": 1
+      },
+      "text": "Detect if the most recent turn includes a confirmation or agreement. If so, return has_insight=true with a type 'suggestion' to reinforce or elaborate on the confirmed point. Otherwise, return has_insight=false."
+    },
+    {
+      "id": "humor-detector",
+      "name": "Humor Detector",
+      "output_format": "default_v2",
+      "trigger_config": {
+        "mode": "turn_based",
+        "cooldown": 15,
+        "keywords": [
+          "joke",
+          "funny",
+          "laugh"
+        ],
+        "subscribed_events": [],
+        "priority": 1
+      },
+      "text": "Identify if humor or a joke is present in the most recent turn. If humor is detected, return has_insight=true with a type 'praise' to acknowledge the light-hearted moment. Otherwise, return has_insight=false."
+    }
+  ],
+  "_lint": []
+}

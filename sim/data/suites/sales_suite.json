@@ -1,0 +1,127 @@
+{
+  "name": "Sales copilot suite",
+  "description": "Seven specialist agents that coach a sales rep in real time. Demonstrates turn-based, keyword, and event (Phase-2) triggers, fact/queue/variable/memory writes, priority, and cooldown gating.",
+  "agents": [
+    {
+      "id": "phase_tracker",
+      "name": "Phase Tracker",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 0, "priority": 1 },
+      "text": "You silently track which phase of the sales call we are in.",
+      "_doc": "Silent state agent. Writes the `phase` variable every turn. Never whispers. Watch the Blackboard panel: `phase` flips discovery -> negotiation -> closing.",
+      "_mock": {
+        "latency_ms": 120,
+        "rules": [
+          { "when": { "any_keywords": ["price", "pricing", "cost", "how much", "quote", "expensive", "discount", "budget"] }, "variable_updates": { "phase": "negotiation" } },
+          { "when": { "any_keywords": ["move forward", "next steps", "get started", "sign", "contract", "ready"] }, "variable_updates": { "phase": "closing" } },
+          { "when": { "min_turn": 1, "max_turn": 2 }, "variable_updates": { "phase": "discovery" } }
+        ]
+      }
+    },
+    {
+      "id": "question_detector",
+      "name": "Question Detector",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 3, "priority": 2 },
+      "text": "Detect when the customer asks a question and signal other agents.",
+      "_doc": "Emits the `question_detected` EVENT and queues the question. The event wakes the Answer Suggester in Phase 2 of the SAME turn -- this is the framework's one-hop coordination.",
+      "_mock": {
+        "latency_ms": 220,
+        "rules": [
+          {
+            "when": { "speaker": "CUSTOMER", "regex": "\\?" },
+            "events": [ { "name": "question_detected", "payload": { "from": "customer" } } ],
+            "queue_pushes": { "pending_questions": ["customer question"] }
+          }
+        ]
+      }
+    },
+    {
+      "id": "answer_suggester",
+      "name": "Answer Suggester",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "event", "subscribed_events": ["question_detected"], "cooldown": 0, "priority": 2 },
+      "text": "When a question is detected, suggest how to answer it.",
+      "_doc": "EVENT-triggered. Runs ONLY in Phase 2, and ONLY on turns where Question Detector emitted `question_detected`. On every other turn it shows up under 'skipped (trigger_type_mismatch)'. This is the clearest view of Phase-1 -> Phase-2 coordination and the +1 LLM round-trip it costs.",
+      "_mock": {
+        "latency_ms": 380,
+        "rules": [
+          {
+            "when": { "has_event": "question_detected" },
+            "speak": { "content": "Customer asked a question. Answer it directly first, then bridge to value before they disengage.", "type": "suggestion", "confidence": 0.82, "action_label": "Answer now" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "objection_handler",
+      "name": "Objection Handler",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": ["turn_based", "keyword"], "keywords": ["expensive", "discount", "cheaper", "too much"], "cooldown": 10, "priority": 5 },
+      "text": "Spot price objections and coach the rep to defend value.",
+      "_doc": "Fires on price-objection language. Cooldown is 10s on purpose: when two objections land <10s apart, the second is gated by cooldown (see the 'skipped' list). Tracks objection_count in private memory and records an `objection` fact.",
+      "_mock": {
+        "latency_ms": 320,
+        "rules": [
+          {
+            "when": { "any_keywords": ["expensive", "too much", "discount", "cheaper", "high"] },
+            "speak": { "content": "Price objection. Anchor on ROI and total value -- do not lead with a discount.", "type": "warning", "confidence": 0.9, "action_label": "Reframe value" },
+            "facts": [ { "type": "objection", "key": "price", "value": "price perceived as too high", "confidence": 0.8 } ],
+            "memory_updates": { "objection_count": { "$inc": 1 } }
+          }
+        ]
+      }
+    },
+    {
+      "id": "buying_signal_detector",
+      "name": "Buying Signal Detector",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 6, "priority": 3 },
+      "text": "Detect buying signals and prompt the rep to advance the deal.",
+      "_doc": "Turn-based opportunity spotter. Fires on intent-to-buy language and nudges the rep to propose next steps.",
+      "_mock": {
+        "latency_ms": 300,
+        "rules": [
+          {
+            "when": { "any_keywords": ["move forward", "next steps", "get started", "sign", "ready", "when can we", "timeline"] },
+            "speak": { "content": "Strong buying signal. Propose concrete next steps and a timeline now.", "type": "opportunity", "confidence": 0.88, "action_label": "Advance deal" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "budget_extractor",
+      "name": "Budget Extractor",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 5, "priority": 4 },
+      "text": "Extract any budget figure the customer mentions as a structured fact.",
+      "_doc": "Silent fact extractor. Matches money patterns and writes a `budget` fact to the Blackboard (no whisper). Watch the Facts section of the Blackboard panel.",
+      "_mock": {
+        "latency_ms": 240,
+        "rules": [
+          {
+            "when": { "regex": "\\$\\s?\\d|\\d+\\s?k\\b|thousand|million|per (month|year)|/mo|budgeted" },
+            "facts": [ { "type": "budget", "value": "budget figure mentioned by customer", "confidence": 0.7 } ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "compliance_monitor",
+      "name": "Compliance Monitor",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": ["turn_based", "keyword"], "keywords": ["guarantee", "promise", "100%", "no risk", "always"], "cooldown": 5, "priority": 10 },
+      "text": "Catch risky absolute claims and over-promises by the rep.",
+      "_doc": "Highest priority (10). Fires when anyone uses absolute/guarantee language so the rep doesn't over-commit. Priority decides who wins on colliding writes -- compliance should win.",
+      "_mock": {
+        "latency_ms": 300,
+        "rules": [
+          {
+            "when": { "any_keywords": ["guarantee", "promise", "100%", "no risk", "always"] },
+            "speak": { "content": "Compliance risk: avoid absolute guarantees. Use 'typically' or 'in most cases' instead.", "type": "warning", "confidence": 0.95, "action_label": "Soften claim" }
+          }
+        ]
+      }
+    }
+  ]
+}
