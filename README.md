@@ -9,7 +9,7 @@ It replays scripted conversations through a **real `AgentEngine`** and shows you
 > the framework repo. The simulator's driver doubles as a reference example of how to host the
 > framework correctly.
 
-![concept](https://img.shields.io/badge/mode-mock%20%7C%20real-blue) ![status](https://img.shields.io/badge/v1-visualize%20%26%20debug-green)
+![mode](https://img.shields.io/badge/runs-real%20(OpenAI)-blue) ![data](https://img.shields.io/badge/source-your%20conversations-orange) ![status](https://img.shields.io/badge/design%20%26%20optimize-prompts%20you%20port-green)
 
 ---
 
@@ -41,21 +41,24 @@ pip install -r requirements.txt        # fastapi + uvicorn (openai/pydantic/jinj
 python run.py                          # -> http://127.0.0.1:8000
 ```
 
-Then open the URL, pick a **scenario** + **suite**, press **Load**, and **Step** or **Play**.
+Then open the URL, set your **OpenAI key** (🔑 in the header → **Save**; stored in a git-ignored
+`.env`, or set `OPENAI_API_KEY`), pick a **scenario** + **suite**, press **Load**, and **Step** or
+**Play**. It always runs **real** — what you see is what you port to production.
 
-### Bundled demos
+### Getting a scenario to replay
 
-Five domain pairs ship in `sim/data/`, each chosen to make a different framework behavior visible:
+- **📚 Your real conversations (primary).** Drop your production DB at `sim/db/xubb.db` and the
+  **Data** tab lets you browse real sessions and **Use as scenario** — replay an actual conversation
+  and optimize your agents against what production really whispered. See *Optimizing against your
+  real data* below.
+- **The `summary_demo` reference.** One built-in scenario+suite ships as a worked example of the
+  **every-10-turns summarizer** pattern (a `turn_based` agent gated by `turn_count % 10`). Pick it
+  from the dropdowns for a self-contained run without the DB.
 
-| Scenario | Suite | What it teaches |
-|----------|-------|-----------------|
-| **Sales discovery call** | Sales copilot | Phase-1→Phase-2 coordination, cooldown gating, facts/queues/memory, a silence turn with no subscriber |
-| **Support chat: outage** | Support copilot | High-priority escalation, a **silence**-triggered SLA monitor, sentiment as a pure-function-of-the-prompt, cooldown recovery |
-| **Procurement negotiation** | Negotiation copilot | **Priority collisions** on a shared variable, an **interval** BATNA reminder, keyword **allow-list routing** |
-| **Mock job interview** | Interview copilot | Memory accumulation (`$inc`), event-driven follow-up prediction, filler-word detection |
-| **Team standup** | Standup copilot | Action-item queues, per-speaker memory, an interval/silence time-box monitor |
+Generate a fresh agent suite any time from the **🧪 Generate** tab, then **Load**, **Step**/**Play**,
+and iterate in the **Suite editor** or **🔁 Self-Improve**.
 
-If the framework isn't a sibling:
+If the framework isn't a sibling at `../xubb_agents`:
 
 ```bash
 # either install it editable…
@@ -64,10 +67,6 @@ pip install -e /path/to/xubb_agents
 XUBB_AGENTS_PATH=/path/to/xubb_agents python run.py
 ```
 
-**Mock mode** (default) needs no API key — agent behavior comes from deterministic rules.
-**Real mode** uses an OpenAI-compatible key (paste it in the UI or set `OPENAI_API_KEY`) to drive
-the agents with an actual LLM.
-
 ---
 
 ## What you see
@@ -75,23 +74,23 @@ the agents with an actual LLM.
 | Pane | Shows |
 |------|-------|
 | **Conversation & Whispers** | The transcript streaming in, with each agent whisper attached to the turn that produced it, color-coded by type. Per-turn chips flag `P1→P2 coordination`, latency, emitted events, cooldown-gated agents, and variable changes. |
-| **Turn detail** | Phase-by-phase breakdown: which agents ran, who spoke vs stayed silent, what each wrote (events/facts/vars/queues/memory), who was **cooldown-gated**, who was **skipped** and why, and the **modeled latency** (Phase 1 + Phase 2 = the real cost of coordination). |
+| **Turn detail** | Phase-by-phase breakdown: which agents ran, who spoke vs stayed silent, what each wrote (events/facts/vars/queues/memory), who was **cooldown-gated**, who was **skipped** and why, and the **wall-clock latency** (a P1→P2 turn pays a second sequential LLM round-trip). |
 | **Blackboard** | The live shared state — variables, facts (with confidence + priority + source), queues, agent-private memory — evolving as you step. |
 | **Agents** | The suite roster: triggers, cooldown, priority, keywords, event subscriptions, and a one-line description of what to watch for each. |
-| **Suite editor** | Edit the agents + mock rules as JSON and **Apply** to restart the session against the same scenario. This is the loop for "try a design, watch it run." |
+| **Suite editor** | Edit the agents as JSON and **Apply** to restart the session against the same scenario. This is the loop for "try a design, watch it run." |
 
 ---
 
 ## How it works
 
 ```
- scenario.json (scripted turns)          suite.json (DynamicAgent configs + mock rules)
+ scenario.json (scripted turns)          suite.json (DynamicAgent configs)
             │                                          │
             ▼                                          ▼
  ┌───────────────────────────── SimulationSession (a reference host) ──────────────────────────┐
  │  • builds a real xubb_agents.AgentEngine and registers the agents                            │
  │  • per step: sets the virtual clock, builds an AgentContext, calls engine.process_turn(...)  │
- │  • MockLLMClient (per agent) stands in for the OpenAI call — deterministic, rule-based        │
+ │  • each agent makes a real OpenAI call (a MockLLMClient backs the headless smoke test only)   │
  │  • CaptureTracer (an AgentCallbackHandler) records the full per-turn execution trace          │
  └──────────────────────────────────────────┬───────────────────────────────────────────────────┘
                                              ▼
@@ -100,9 +99,8 @@ the agents with an actual LLM.
 
 Key design choices (all in `sim/`):
 
-- **`mock_llm.py`** — the mock is a *pure function of the rendered prompt*, exactly like a real LLM.
-  Rules match the transcript text (keywords/regex) plus optional live-blackboard predicates. This
-  keeps lessons honest: *an agent only reacts to what's in its prompt.*
+- **`mock_llm.py`** — a deterministic LLM stand-in (a *pure function of the rendered prompt*) used by
+  the headless `smoke_test.py` and the build-time suite validator. The UI always uses the real LLM.
 - **`clock.py`** — cooldowns use `time.time()` in the framework. A fast replay would land every turn
   in the same instant and suppress everything. We point the framework's `agent` module at a
   **virtual clock** driven by scenario timestamps, so cooldowns gate in *scenario seconds*. Surgical
@@ -189,11 +187,15 @@ any turn where a Phase-1 agent emitted that event.
 
 ---
 
-## Modes
+## Real-only
 
-- **Mock (default):** deterministic, free, reproducible. Best for studying *mechanics*.
-- **Real:** drives the actual `DynamicAgent` prompts through OpenAI. Best for validating *prompts*.
-  Set the model per agent via `model_config.model`. Latency shown is the real measured latency.
+The sandbox always runs **real** — every agent is its actual `DynamicAgent` prompt driven through
+OpenAI, so *what you see is what you port*. Pick the model from the header / Generate / Self-Improve
+dropdowns (populated live from your key via `GET /api/models`, newest first, defaulting to the newest
+flagship), or per-agent via `model_config.model`. Latency shown is the real measured wall-clock.
+
+> A deterministic `MockLLMClient` still exists for one purpose — the headless `smoke_test.py` — but it
+> is no longer exposed in the UI.
 
 ## 🔁 Self-Improvement (automatic prompt optimization)
 
@@ -211,15 +213,16 @@ It deterministically catches the classic failure where an emitter and a subscrib
 event name (so Phase-2 coordination silently dies), and penalizes HUD spam, redundancy, and
 off-role whispers.
 
-- **Objective:** judged against each scenario step's authored `note` (ground truth) plus baked-in
-  rules (coordination must fire; ≤1–2 whispers/turn; agents stay in their lane; no redundancy).
-  Editable in the tab.
+- **Objective:** on the **Data** path (a real session) it's judged against the **production baseline** —
+  what your deployed agents actually whispered on that conversation — plus baked-in rules (coordination
+  must fire; ≤1–2 whispers/turn; agents stay in their lane; no redundancy). For the `summary_demo`
+  reference it also uses each step's authored `note`. Editable in the tab.
 - **Output:** a live round-by-round view (score bar, metrics, judge critique, what it rewrote), the
   best suite, and a saved **Markdown report** documenting the whole journey. **Save improved suite**
   writes `<suite>_improved.json` into the dropdown so you can A/B it against the original.
-- **Cost:** runs in **real mode** — needs your OpenAI key. Each round ≈ one full scenario run
-  (turns × agents LLM calls) + a judge call + a rewrite call. Defaults: target 85, up to 5 rounds
-  (stops early), optimizer model `gpt-4o`.
+- **Cost:** needs your OpenAI key. Each round ≈ one full scenario run (turns × agents LLM calls) + a
+  judge call + a rewrite call. Defaults: target 85, up to 5 rounds (stops early); pick the optimizer
+  model from the dropdown (defaults to the newest flagship).
 
 Implementation: [`sim/optimizer.py`](sim/optimizer.py) (`compute_metrics` / `llm_judge` /
 `llm_optimize` / `run_self_improvement`); the judge and optimizer are injectable seams so the loop
@@ -298,7 +301,7 @@ xubb_agents_simulator/
 
 ## Lessons it's built to teach
 
-1. **Coordination is shallow and costs latency.** Watch the modeled latency jump on `P1→P2` turns —
+1. **Coordination is shallow and costs latency.** Watch the wall-clock latency jump on `P1→P2` turns —
    that's a second sequential LLM round-trip. Anything deeper than one hop must wait for the next turn.
 2. **Silent runs spend cooldown.** An agent that runs but says nothing still resets its timer, so a
    chatty cooldown can make it miss a later *real* trigger. (See the Objection Handler at turn 6.)

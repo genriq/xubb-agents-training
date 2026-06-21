@@ -15,6 +15,7 @@ import json
 from typing import Any, Dict, Optional
 
 from .driver import SimulationSession
+from .llm_compat import create_json
 from . import learnings
 
 try:
@@ -75,21 +76,78 @@ Return ONLY JSON: {"name": "...", "description": "...", "agents": [ \
 
 
 def speaker_orientation(user_speaker: Optional[str]) -> str:
-    """The fixed framing EVERY agent must encode: who is the user vs the audience,
-    and that the whisper is private advice TO the user. Parameterized by the
+    """Instruct the generator/optimizer to WRITE the speaker-role framing into each
+    agent's VISIBLE prompt text — so it's part of what the user sees, edits, and
+    ports to the real app (no behind-the-scenes injection). Parameterized by the
     scenario's user_speaker (e.g. 'YOU' in production, 'REP'/'ME' in demos)."""
     us = user_speaker or "YOU"
     return (
-        "\n\nSPEAKER ORIENTATION — bake this into EVERY agent's prompt:\n"
-        f"- In the transcript, the speaker labeled \"{us}\" is the USER you privately coach — those "
-        "are the user's OWN words.\n"
-        "- EVERY other speaker label is the AUDIENCE / counterparty (could be one person or many).\n"
-        f"- Each agent MUST: (a) attribute correctly — distinguish what the user (\"{us}\") said from "
-        "what the audience said; (b) frame its whisper as PRIVATE advice spoken TO the user "
-        "(\"you…\", \"ask them…\"), NEVER addressed to the audience; (c) watch the AUDIENCE for "
-        f"questions / objections / buying-signals, and watch the USER (\"{us}\") for the user's own "
-        "missteps / over-promises."
+        "\n\nSPEAKER ROLES — write this into EVERY agent's `text` (it is part of the visible, "
+        "portable prompt; do NOT rely on any hidden injection):\n"
+        f"- In the transcript, the speaker labeled \"{us}\" is the USER the agent privately coaches "
+        "(the user's own words); every OTHER speaker is the AUDIENCE / counterparty (one or many).\n"
+        f"- Each prompt must state this, and design the agent to watch the RIGHT speaker: detect "
+        f"questions / objections / buying-signals from the AUDIENCE, and the user's own missteps / "
+        f"over-promises from \"{us}\". Whispers are PRIVATE advice spoken TO the user, never to the audience."
     )
+
+
+# ---------------------------------------------------------------------------
+# Rolling-summary agent (optional) — the proven "every-N-turns" template.
+# We INJECT this rather than letting the LLM design it: the mod-on-turn_count gate
+# and the `summary` variable plumbing are exactly what the model gets wrong, and
+# _lint_and_fix strips any trigger_conditions the LLM writes. A fixed, correctly
+# wired template is the only reliable way to ship it.
+# ---------------------------------------------------------------------------
+_SUMMARIZER_TEXT = (
+    '[Speaker roles] In the transcript, the speaker labeled "__US__" is the user being privately '
+    'coached (their own words). Every OTHER speaker is the audience / counterparty.\n\n'
+    'You are the CONVERSATION SUMMARIZER. You run every __EVERY__ turns and maintain a rolling summary '
+    'that OTHER agents read from the shared `summary` variable. You NEVER whisper to the user.\n\n'
+    'Read the PRIOR summary and the recent turns, then produce an UPDATED, concise summary (3-6 short '
+    'points): who is involved, what has been covered, key facts (numbers / decisions / commitments), the '
+    'current phase, and open items. Keep prior facts; fold in what is new.\n\n'
+    'Prior summary: {{ blackboard.variables.summary }}\n\n'
+    'Return JSON: { "has_insight": false, "variable_updates": { "summary": "<updated summary>" } }'
+)
+
+# Appended to the generator's system prompt so the LLM wires READERS of the summary.
+_READER_INSTR = (
+    "\n\nA ROLLING-SUMMARY agent is being added to this suite AUTOMATICALLY: it maintains "
+    "`blackboard.variables.summary`, a concise rolling summary refreshed every __EVERY__ turns. Do NOT "
+    "create your own summarizer. INSTEAD, for the 1-3 agents that most benefit from whole-conversation "
+    "context, add the line `Running summary: {{ blackboard.variables.summary }}` to their `text` and tell "
+    "them to use it together with the latest turn. Agents that react only to the immediate turn don't need it."
+)
+
+
+def _clamp_every(every) -> int:
+    try:
+        return max(2, min(100, int(every)))
+    except (TypeError, ValueError):
+        return 10
+
+
+def _summarizer_agent(every: int, user_speaker: Optional[str]) -> Dict[str, Any]:
+    """The proven rolling-summary agent, parameterized by interval + user_speaker.
+    Fires only when turn_count % every == 0 and writes the shared `summary` variable."""
+    every = _clamp_every(every)
+    us = user_speaker or "YOU"
+    return {
+        "id": "rolling-summarizer",
+        "name": "Conversation Summarizer",
+        "output_format": "default_v2",
+        "trigger_config": {"mode": "turn_based", "cooldown": 0, "priority": 9},
+        "trigger_conditions": {"mode": "all", "rules": [{"meta": "turn_count", "op": "mod", "value": every}]},
+        "model_config": {"context_turns": max(every + 2, 12)},
+        "text": _SUMMARIZER_TEXT.replace("__US__", us).replace("__EVERY__", str(every)),
+        "_doc": (
+            f"Rolling-summary agent: fires only when turn_count % {every} == 0; writes the shared "
+            "`summary` variable (no whisper) that other agents read via {{ blackboard.variables.summary }}. "
+            f"NOTE for porting: production does not yet set turn_count (see the host turn_count spec), so "
+            f"until that host fix lands it runs EVERY turn in prod — correct summaries, ~{every}x the cost."
+        ),
+    }
 
 
 async def generate_suite(
@@ -100,6 +158,8 @@ async def generate_suite(
     baseline_sample: Optional[str] = None,
     learned_principles: Optional[list] = None,
     user_speaker: Optional[str] = None,
+    include_summarizer: bool = False,
+    summary_every: int = 10,
     generator=None,
 ) -> Dict[str, Any]:
     """Generate a suite for `goal`. Returns a normalized, build-validated suite dict.
@@ -116,7 +176,10 @@ async def generate_suite(
             raise RuntimeError("Agent generation needs an OpenAI API key.")
         principles = (learned_principles if learned_principles is not None
                       else learnings.active_principles(scope="all"))
-        system = _GEN_SYSTEM + speaker_orientation(user_speaker) + learnings.principles_block(principles)
+        system = _GEN_SYSTEM + speaker_orientation(user_speaker)
+        if include_summarizer:
+            system += _READER_INSTR.replace("__EVERY__", str(_clamp_every(summary_every)))
+        system += learnings.principles_block(principles)
         client = AsyncOpenAI(api_key=api_key)
         user = f"GOAL:\n{goal}\n"
         if session_context:
@@ -125,19 +188,24 @@ async def generate_suite(
         if baseline_sample:
             user += ("\nThe current production agents whisper things like the following. Do BETTER — "
                      f"sharper, more specialized, far less spammy:\n{baseline_sample[:1400]}\n")
-        resp = await client.chat.completions.create(
-            model=model, temperature=0.4,
-            response_format={"type": "json_object"},
+        suite = await create_json(
+            client, model=model, temperature=0.4,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}],
         )
-        suite = json.loads(resp.choices[0].message.content)
 
     suite = _normalize(suite)
     if not suite.get("agents"):
         raise ValueError("generator returned no agents")
     # Auto-fix the firing logic the LLM commonly gets wrong, THEN build-validate.
     suite, fixes = _lint_and_fix(suite)
+    if include_summarizer:
+        # Drop any summarizer the LLM made anyway, then inject the correctly-wired one
+        # (AFTER _lint_and_fix, so its turn_count gate survives the trigger_conditions strip).
+        suite["agents"] = [a for a in suite["agents"]
+                           if "summar" not in ((a.get("id") or "") + (a.get("name") or "")).lower()]
+        suite["agents"].insert(0, _summarizer_agent(summary_every, user_speaker))
+        fixes.append(f"injected the rolling-summary agent (writes `summary` every {_clamp_every(summary_every)} turns)")
     suite["_lint"] = fixes
     SimulationSession(suite=suite, scenario={"steps": []}, mode="mock").close()
     return suite

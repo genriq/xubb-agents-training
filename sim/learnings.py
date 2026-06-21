@@ -29,6 +29,8 @@ try:
 except ImportError:  # pragma: no cover
     AsyncOpenAI = None
 
+from .llm_compat import create_json
+
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 STORE_PATH = os.path.join(_DATA_DIR, "learnings.json")
 MD_PATH = os.path.join(_DATA_DIR, "learnings.md")
@@ -230,14 +232,13 @@ async def distill(run_result: Dict[str, Any], api_key: Optional[str],
     if traj.strip() == "(no scored changes)":
         return []
     client = AsyncOpenAI(api_key=api_key)
-    resp = await client.chat.completions.create(
-        model=model, temperature=0,
-        response_format={"type": "json_object"},
-        messages=[{"role": "system", "content": _DISTILL_SYSTEM},
-                  {"role": "user", "content": f"TRAJECTORY:\n{traj}\n\nExtract the lessons."}],
-    )
     try:
-        return (json.loads(resp.choices[0].message.content) or {}).get("lessons", [])
+        data = await create_json(
+            client, model=model, temperature=0,
+            messages=[{"role": "system", "content": _DISTILL_SYSTEM},
+                      {"role": "user", "content": f"TRAJECTORY:\n{traj}\n\nExtract the lessons."}],
+        )
+        return (data or {}).get("lessons", [])
     except Exception:
         return []
 
