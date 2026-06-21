@@ -412,6 +412,8 @@ class GenerateBody(BaseModel):
     model: str = "gpt-4o"
     db_session_id: Optional[str] = None
     use_baseline: bool = True
+    include_summarizer: bool = False
+    summary_every: int = 10
 
 
 @app.post("/api/generate-suite")
@@ -441,6 +443,7 @@ async def generate(body: GenerateBody):
             body.goal, api_key=key, model=body.model,
             session_context=session_context, baseline_sample=baseline_sample,
             user_speaker=user_speaker,
+            include_summarizer=body.include_summarizer, summary_every=body.summary_every,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"generation failed: {e}")

@@ -44,6 +44,186 @@
         "avg_delta": 7.0
       },
       "status": "candidate"
+    },
+    {
+      "id": "for-real-time-agents-trigger-only-on-exp",
+      "principle": "For real-time agents, trigger only on explicit evidence in the newest input and ignore stale or resolved prior context.",
+      "kind": "structural",
+      "before": "context carryover",
+      "after": "latest-turn evidence gate",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 5.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "role-specific-agents-should-verify-the-l",
+      "principle": "Role-specific agents should verify the latest speaker/source before acting, rather than inferring whose problem to solve from surrounding context.",
+      "kind": "structural",
+      "before": "ambiguous role inference",
+      "after": "speaker-label gate",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 5.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "use-cooldowns-and-unresolved-problem-che",
+      "principle": "Use cooldowns and unresolved-problem checks for agents prone to repeated advice, so they remain sparse without missing fresh issues.",
+      "kind": "structural",
+      "before": "repeat-prone triggers",
+      "after": "cooldown plus unresolved gate",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 6.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "capture-tasks-or-constraints-only-when-t",
+      "principle": "Capture tasks or constraints only when the user makes a new, explicit commitment or states a quoteable constraint; avoid inventing actions from vague plans.",
+      "kind": "stylistic",
+      "before": "inferred tasks from vague intent",
+      "after": "explicit new commitment only",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 6.0
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "gate-advice-on-the-most-recent-explicit-",
+      "principle": "Gate advice on the most recent explicit relevant cue, and suppress responses based only on older context or conversational transitions.",
+      "kind": "structural",
+      "before": "stale-context triggers",
+      "after": "latest-turn explicit triggers",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 16.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "define-each-agent-s-lane-with-speaker-so",
+      "principle": "Define each agent\u2019s lane with speaker/source constraints and non-overlap rules so agents do not respond to the wrong participant or duplicate another agent\u2019s job.",
+      "kind": "structural",
+      "before": "mixed speaker and lane triggers",
+      "after": "speaker-scoped, lane-specific triggers",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 15.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "tune-cooldowns-by-task-urgency-same-turn",
+      "principle": "Tune cooldowns by task urgency: same-turn issues need permissive firing, while repetitive logistics or status checks need stronger cooldowns to avoid stale repeats.",
+      "kind": "structural",
+      "before": "uniform or misaligned cooldowns",
+      "after": "urgency-calibrated cooldowns",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 16.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "for-commitment-tracking-agents-require-e",
+      "principle": "For commitment-tracking agents, require explicit owner-plus-action evidence and forbid inferred details or overlap with planning/scheduling advice.",
+      "kind": "structural",
+      "before": "broad inferred next steps",
+      "after": "explicit owner-action commitments",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 16.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "trigger-agents-only-from-explicit-signal",
+      "principle": "Trigger agents only from explicit signals in the latest relevant external turn; do not let prior context or user-originated side remarks activate real-time advice.",
+      "kind": "structural",
+      "before": "context-driven firing",
+      "after": "latest-turn explicit-signal gating",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 10.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "give-each-agent-narrow-role-boundaries-w",
+      "principle": "Give each agent narrow role boundaries with explicit exclusions so it cannot drift into adjacent coaching responsibilities.",
+      "kind": "structural",
+      "before": "broad overlapping roles",
+      "after": "strict scoped roles with exclusions",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 10.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "for-real-time-copilots-tune-cooldowns-ar",
+      "principle": "For real-time copilots, tune cooldowns around immediacy: allow same-turn responses to clear direct triggers while preventing delayed stale whispers.",
+      "kind": "structural",
+      "before": "cooldowns causing stale or missed moments",
+      "after": "cooldowns aligned to same-turn relevance",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 2.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "constrain-rewrite-or-repair-agents-to-a-",
+      "principle": "Constrain rewrite or repair agents to a single concrete output form to prevent them from becoming generic advice generators.",
+      "kind": "structural",
+      "before": "open-ended repair advice",
+      "after": "specific replacement-output contract",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 2.0
+      },
+      "status": "active"
     }
   ]
 }

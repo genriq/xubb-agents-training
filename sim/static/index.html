@@ -263,7 +263,7 @@ const state = {
   models: null, modelDefault: null,
   optimize: { jobId: null, poll: null, job: null, objective: null, defaultObjective: null, model: null },
   // Generation is its OWN concern, independent of the production data.
-  generate: { suite: null, goalDraft: '', generating: false, model: null },
+  generate: { suite: null, goalDraft: '', generating: false, model: null, summarizer: false, summaryEvery: 10 },
   data: { checked: false, stats: null, sessions: null, search: '', dbScenario: null, dbSessionId: null, dbSessionName: null },
 };
 
@@ -1003,6 +1003,14 @@ function renderGenerateTab(box) {
     ground.innerHTML = '<i>Optional:</i> import a real conversation in the <b>📚 Data</b> tab first to ground generation in real talk — otherwise it designs purely from your goal.';
   }
   box.appendChild(ground);
+  // Optional: inject the proven rolling-summary agent (every-N-turns template).
+  const sumOpt = el('div'); sumOpt.style.margin = '8px 0';
+  sumOpt.innerHTML = `<label class="inline"><input type="checkbox" id="genSummarizer" ${g.summarizer ? 'checked' : ''}> Include a <b>rolling-summary</b> agent</label>`
+    + ` <span class="inline">every <input type="number" id="genSummaryEvery" value="${g.summaryEvery || 10}" min="2" max="100" style="width:52px"> turns</span>`
+    + `<div class="subtle" style="margin-top:4px">Injects the proven summarizer that writes a <code>summary</code> variable other agents read, and tells them to use it. <span style="color:var(--warning)">Note:</span> prod doesn't set <code>turn_count</code> yet, so it runs every turn there until the host fix.</div>`;
+  box.appendChild(sumOpt);
+  $('#genSummarizer').addEventListener('change', e => g.summarizer = e.target.checked);
+  $('#genSummaryEvery').addEventListener('change', e => g.summaryEvery = parseInt(e.target.value) || 10);
   const gb = el('button','primary', g.generating ? 'Generating…' : '🧪 Generate suite'); gb.disabled = g.generating; gb.style.display='block';
   gb.addEventListener('click', doGenerate);
   box.appendChild(gb);
@@ -1085,6 +1093,7 @@ async function doGenerate() {
   try {
     const body = { goal, api_key: key, model };
     if (useCtx && state.data.dbSessionId) body.db_session_id = state.data.dbSessionId;
+    if (g.summarizer) { body.include_summarizer = true; body.summary_every = g.summaryEvery || 10; }
     const res = await api('/api/generate-suite','POST', body);
     g.suite = res.suite; setMsg(`generated ${res.suite.agents.length} agents — review, then ▶ Load this suite`);
   } catch(e){ setMsg(e.message, true); }
