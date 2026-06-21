@@ -224,6 +224,126 @@
         "avg_delta": 2.0
       },
       "status": "active"
+    },
+    {
+      "id": "background-or-scheduled-agents-should-us",
+      "principle": "Background or scheduled agents should use valid trigger wiring and perform silent state updates instead of emitting user-visible messages.",
+      "kind": "structural",
+      "before": "invalid/noisy scheduled execution",
+      "after": "valid gated silent state write",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 9.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "specialist-agents-should-have-narrow-con",
+      "principle": "Specialist agents should have narrow, concrete, mutually disjoint trigger lanes so they do not answer outside their role or overlap with other agents.",
+      "kind": "structural",
+      "before": "broad overlapping triggers",
+      "after": "concrete disjoint triggers",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 9.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "advice-agents-should-act-only-on-the-lat",
+      "principle": "Advice agents should act only on the latest relevant user turn and suppress stale or generic suggestions.",
+      "kind": "stylistic",
+      "before": "stale generic coaching",
+      "after": "current-turn relevant coaching",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 9.0
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "silent-background-executions-should-leav",
+      "principle": "Silent background executions should leave an explicit observable state marker rather than creating a visible notification.",
+      "kind": "structural",
+      "before": "unobservable silent run",
+      "after": "silent run with state confirmation",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 4.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "validate-trigger-conditions-against-the-",
+      "principle": "Validate trigger conditions against the actual shared-state schema so agents can fire or write state reliably without broken event wiring.",
+      "kind": "structural",
+      "before": "invalid trigger variable",
+      "after": "schema-valid trigger",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 12.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "default-agents-to-latest-turn-concrete-e",
+      "principle": "Default agents to latest-turn, concrete evidence gates rather than broad or stale interpretation, especially when multiple agents could comment on the same moment.",
+      "kind": "stylistic",
+      "before": "vague or stale firing",
+      "after": "concrete recent evidence",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 12.0
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "reduce-noise-by-suppressing-routine-low-",
+      "principle": "Reduce noise by suppressing routine low-value coaching, praise, and generic clarifications; use cooldowns to prevent repetitive whispers.",
+      "kind": "stylistic",
+      "before": "frequent generic coaching",
+      "after": "sparse high-value intervention",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 12.0
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "keep-background-summarization-state-main",
+      "principle": "Keep background summarization/state maintenance silent unless user-facing output is explicitly needed.",
+      "kind": "structural",
+      "before": "visible housekeeping behavior",
+      "after": "silent state writing",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 12.0
+      },
+      "status": "active"
     }
   ]
 }

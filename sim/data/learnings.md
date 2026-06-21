@@ -15,11 +15,19 @@ Auto-distilled from Self-Improve runs. Stylistic lessons auto-inject into the ge
 - **Give each agent narrow role boundaries with explicit exclusions so it cannot drift into adjacent coaching responsibilities.** _(support 1, avg +10.0, ACTIVE)_
 - **For real-time copilots, tune cooldowns around immediacy: allow same-turn responses to clear direct triggers while preventing delayed stale whispers.** _(support 1, avg +2.0, ACTIVE)_
 - **Constrain rewrite or repair agents to a single concrete output form to prevent them from becoming generic advice generators.** _(support 1, avg +2.0, ACTIVE)_
+- **Background or scheduled agents should use valid trigger wiring and perform silent state updates instead of emitting user-visible messages.** _(support 1, avg +9.0, ACTIVE)_
+- **Specialist agents should have narrow, concrete, mutually disjoint trigger lanes so they do not answer outside their role or overlap with other agents.** _(support 1, avg +9.0, ACTIVE)_
+- **Silent background executions should leave an explicit observable state marker rather than creating a visible notification.** _(support 1, avg +4.0, ACTIVE)_
+- **Validate trigger conditions against the actual shared-state schema so agents can fire or write state reliably without broken event wiring.** _(support 1, avg +12.0, ACTIVE)_
+- **Keep background summarization/state maintenance silent unless user-facing output is explicitly needed.** _(support 1, avg +12.0, ACTIVE)_
 
 ## Stylistic — injected into prompts when ACTIVE
 - **Reduce whisper frequency by increasing cooldown periods and emphasizing criticality to maintain high signal-to-noise ratio.** _(support 1, avg +6.0, candidate)_
 - **Ensure whispers provide unique, high-value insights to reduce noise and improve signal quality.** _(support 1, avg +7.0, candidate)_
 - **Capture tasks or constraints only when the user makes a new, explicit commitment or states a quoteable constraint; avoid inventing actions from vague plans.** _(support 1, avg +6.0, candidate)_
+- **Advice agents should act only on the latest relevant user turn and suppress stale or generic suggestions.** _(support 1, avg +9.0, candidate)_
+- **Default agents to latest-turn, concrete evidence gates rather than broad or stale interpretation, especially when multiple agents could comment on the same moment.** _(support 1, avg +12.0, candidate)_
+- **Reduce noise by suppressing routine low-value coaching, praise, and generic clarifications; use cooldowns to prevent repetitive whispers.** _(support 1, avg +12.0, candidate)_
 
 ## Domain-specific
 _(none yet)_
