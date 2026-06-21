@@ -115,6 +115,9 @@ class SimulationSession:
                     "output_format": agent.config.output_format,
                     "latency_ms": latency,
                     "doc": doc,
+                    # The portable prompt the user ports to the real app + its wiring.
+                    "text": config.get("text") or "",
+                    "trigger_conditions": config.get("trigger_conditions"),
                 }
             )
 

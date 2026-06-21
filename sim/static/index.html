@@ -135,6 +135,15 @@
   .picked.gen { border-color: var(--praise); background: #1a142b; }
   .sec-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: var(--panel); }
   .sec-card h4 { margin: 0 0 6px; font-size: 13px; }
+  .promptlink { font-size: 11px; color: var(--accent); cursor: pointer; margin: 2px 0 4px 16px; display: inline-block; }
+  .promptlink:hover { text-decoration: underline; }
+  .promptbox { background: #0b0f15; border: 1px solid var(--border); border-radius: 6px; padding: 9px 10px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; margin: 2px 0 8px 0; color: #c9d1d9; }
+  .prompttext { background: #0b0f15; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; margin: 6px 0; color: #d6dee7; }
+  .copybtn { font-size: 11px; padding: 2px 8px; }
 
   /* inspector */
   .tabs { display: flex; gap: 4px; }
@@ -218,6 +227,7 @@
   <div class="col">
     <div class="col-head">
       <div class="tabs">
+        <div class="tab" data-tab="generate">🧪 Generate</div>
         <div class="tab" data-tab="data">📚 Data</div>
         <div class="tab active" data-tab="turn">Turn detail</div>
         <div class="tab" data-tab="bb">Blackboard</div>
@@ -254,8 +264,11 @@ const state = {
   turns: [], selected: -1, playing: false, playTimer: null,
   whisperCount: 0, hopCount: 0, latSum: 0,
   hasServerKey: false,
-  optimize: { jobId: null, poll: null, job: null, objective: null, defaultObjective: null },
-  data: { checked: false, stats: null, sessions: null, search: '', dbScenario: null, dbSessionName: null, genSuite: null, generating: false },
+  models: null, modelDefault: null,
+  optimize: { jobId: null, poll: null, job: null, objective: null, defaultObjective: null, model: null },
+  // Generation is its OWN concern, independent of the production data.
+  generate: { suite: null, goalDraft: '', generating: false, model: null },
+  data: { checked: false, stats: null, sessions: null, search: '', dbScenario: null, dbSessionId: null, dbSessionName: null },
 };
 
 async function api(path, method='GET', body=null) {
@@ -297,23 +310,27 @@ async function startSession() {
   pause();
   try {
     setMsg('building session…');
-    const body = {
-      scenario_name: $('#scenarioSel').value,
-      suite_name: $('#suiteSel').value,
-      mode: $('#modeSel').value,
-    };
-    if (body.mode === 'real') body.api_key = $('#apiKey').value || null;
+    const mode = $('#modeSel').value;
+    const body = { mode };
+    // A generated suite / imported scenario (held in memory) takes precedence over
+    // the dropdown files — so one Load works for any combination, decoupled.
+    if (state.generate.suite) body.suite = state.generate.suite; else body.suite_name = $('#suiteSel').value;
+    if (state.data.dbScenario) body.scenario = state.data.dbScenario; else body.scenario_name = $('#scenarioSel').value;
+    if (mode === 'real') body.api_key = $('#apiKey').value || null;
     const res = await api('/api/session', 'POST', body);
-    state.sessionId = res.session_id; state.meta = res.meta; state.mode = body.mode;
+    state.sessionId = res.session_id; state.meta = res.meta; state.mode = mode;
     state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
     $('#conversation').innerHTML = '';
     $('#stTotal').textContent = res.meta.scenario.total_steps;
     ['resetBtn','stepBtn','playBtn','runBtn'].forEach(id => $('#'+id).disabled = false);
     renderInspector();
     updateStatus();
-    setMsg('ready — ' + res.meta.suite.name + ' on ' + res.meta.scenario.name);
-    // preload suite JSON into editor
-    try { const suite = await api('/api/suite/' + $('#suiteSel').value); window.__suiteJSON = JSON.stringify(suite, null, 2); } catch(e){}
+    const usingGen = state.generate.suite ? ' [generated suite]' : '';
+    const usingDb = state.data.dbScenario ? ' [imported scenario]' : '';
+    setMsg('ready — ' + res.meta.suite.name + ' on ' + res.meta.scenario.name + usingGen + usingDb);
+    // preload the editor with whatever suite is active
+    if (state.generate.suite) { window.__suiteJSON = JSON.stringify(state.generate.suite, null, 2); }
+    else { try { const suite = await api('/api/suite/' + $('#suiteSel').value); window.__suiteJSON = JSON.stringify(suite, null, 2); } catch(e){} }
   } catch (e) { setMsg(e.message, true); }
 }
 
@@ -365,6 +382,28 @@ function pause() {
 
 function latency(t) { return state.mode === 'real' ? (t.real_latency_ms || 0) : (t.modeled_latency_ms || 0); }
 function agentDoc(name) { const a = (state.meta && state.meta.agents || []).find(x => x.name === name); return a ? a.doc : ''; }
+async function ensureModels() {
+  if (state.models) return;
+  try {
+    const r = await api('/api/models');
+    if (r.models && r.models.length) { state.models = r.models; state.modelDefault = r.default || r.models[0]; }
+  } catch (e) {}
+  if (!state.models) { state.models = ['gpt-4o', 'gpt-4o-mini']; state.modelDefault = 'gpt-4o'; }
+  if (activeTab === 'generate' || activeTab === 'optimize') renderInspector();
+}
+function modelOptions(selected) {
+  const list = (state.models && state.models.length) ? state.models : [state.modelDefault || 'gpt-4o'];
+  const cur = (selected && list.includes(selected)) ? selected : (state.modelDefault && list.includes(state.modelDefault) ? state.modelDefault : list[0]);
+  return list.map(m => `<option value="${esc(m)}"${m === cur ? ' selected' : ''}>${esc(m)}</option>`).join('');
+}
+function formatPrompt(a) {
+  const find = role => ((a.prompt || []).find(m => m.role === role) || {}).content || '';
+  let out = '══ SYSTEM PROMPT — your agent `text` + everything the framework wraps around it ══\n\n' + find('system');
+  out += '\n\n══ USER MESSAGE (the transcript window) ══\n\n' + find('user');
+  if (a.llm_output != null) out += '\n\n══ RAW LLM OUTPUT (before parsing) ══\n\n' + JSON.stringify(a.llm_output, null, 2);
+  if (a.model) out += '\n\n[model: ' + a.model + ']';
+  return out;
+}
 // Right-align the coached user's bubbles. Prefer the scenario's explicit
 // user_speaker; fall back to an exact-match set of common self-labels (NOT a
 // loose substring, which would mis-align a counterparty like "SELLER").
@@ -476,6 +515,7 @@ function renderInspector() {
   if (activeTab === 'editor') return renderEditorTab(box);
   if (activeTab === 'optimize') return renderOptimizeTab(box);
   if (activeTab === 'data') return renderDataTab(box);
+  if (activeTab === 'generate') return renderGenerateTab(box);
 }
 
 function renderTurnTab(box) {
@@ -544,6 +584,13 @@ function renderTurnTab(box) {
       rows.appendChild(r);
       // Attach the lesson to the mechanic for agents that did something.
       if (a.spoke) { const d = agentDoc(a.agent); if (d) rows.appendChild(el('div', 'agent-doc', d)); }
+      // FULL TRANSPARENCY: the exact prompt this agent received this turn.
+      if (a.prompt) {
+        const link = el('div', 'promptlink', '📄 view exact prompt sent to the LLM');
+        const pb = el('pre', 'promptbox'); pb.style.display = 'none'; pb.textContent = formatPrompt(a);
+        link.addEventListener('click', () => { pb.style.display = pb.style.display === 'none' ? 'block' : 'none'; });
+        rows.appendChild(link); rows.appendChild(pb);
+      }
     });
 
     // Cooldown-gated agents for THIS phase, with the causal chain.
@@ -650,18 +697,33 @@ function renderBlackboardTab(box) {
 function renderAgentsTab(box) {
   box.innerHTML = '';
   if (!state.meta) { box.appendChild(el('div','empty','Load a session to see the agent roster.')); return; }
+  box.appendChild(el('div','subtle','The exact prompt text for each agent — this is what you PORT to the xubb app. Nothing is hidden: 📋 copies it verbatim. (The framework wraps this with user-context, memory, and the transcript at runtime — see "view exact prompt" under any turn to inspect the full assembled prompt.)'));
   state.meta.agents.forEach(a => {
-    const c = el('div', 'agent-card');
-    c.appendChild(el('div', 'nm', a.name));
+    const c = el('div', 'agent-card'); c.style.marginTop = '10px';
+    const head = el('div'); head.style.cssText = 'display:flex;align-items:center;gap:8px';
+    head.appendChild(el('div','nm', a.name));
+    head.appendChild(el('span','subtle', '(' + a.id + ')'));
+    c.appendChild(head);
     const m = el('div', 'meta');
-    m.appendChild(el('span', 'chip t', a.triggers.join(' / ')));
+    m.appendChild(el('span', 'chip t', Array.isArray(a.triggers) ? a.triggers.join(' / ') : a.triggers));
     m.appendChild(el('span', 'chip', 'cooldown ' + a.cooldown + 's'));
     m.appendChild(el('span', 'chip', 'priority ' + a.priority));
-    if (a.keywords.length) m.appendChild(el('span', 'chip', 'kw: ' + a.keywords.join(', ')));
-    if (a.subscribed_events.length) m.appendChild(el('span', 'chip ev', '↘ ' + a.subscribed_events.join(', ')));
-    m.appendChild(el('span', 'chip lat', '~' + a.latency_ms + 'ms'));
+    if ((a.keywords||[]).length) m.appendChild(el('span', 'chip', 'kw: ' + a.keywords.join(', ')));
+    if ((a.subscribed_events||[]).length) m.appendChild(el('span', 'chip ev', '↘ ' + a.subscribed_events.join(', ')));
+    m.appendChild(el('span', 'chip', 'fmt: ' + a.output_format));
     c.appendChild(m);
-    if (a.doc) c.appendChild(el('div', 'doc', a.doc));
+    if (a.trigger_conditions) c.appendChild(elHtml('div','subtle','trigger_conditions: <code>' + esc(JSON.stringify(a.trigger_conditions)) + '</code>'));
+    const lbl = el('div'); lbl.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px';
+    lbl.appendChild(el('span','subtle','PROMPT (the portable `text`)'));
+    const copy = el('button','copybtn','📋 Copy');
+    copy.addEventListener('click', () => {
+      navigator.clipboard.writeText(a.text || ''); copy.textContent = '✓ Copied';
+      setTimeout(() => copy.textContent = '📋 Copy', 1200);
+    });
+    lbl.appendChild(copy);
+    c.appendChild(lbl);
+    c.appendChild(el('div','prompttext', a.text || '(empty)'));
+    if (a.doc) c.appendChild(el('div', 'doc', '📝 ' + a.doc));
     box.appendChild(c);
   });
 }
@@ -723,6 +785,7 @@ function renderOptimizeTab(box) {
 
   const running = !!(opt.job && opt.job.status === 'running');
   const objVal = opt.objective != null ? opt.objective : (opt.defaultObjective || '');
+  ensureModels();
   const form = el('div','opt-form');
   form.innerHTML = `
     <label>Objective — what "better" means</label>
@@ -730,11 +793,11 @@ function renderOptimizeTab(box) {
     <div class="opt-row">
       <div><label>Target score</label><input type="number" id="optTarget" value="85" min="1" max="100" ${running?'disabled':''}></div>
       <div><label>Max rounds</label><input type="number" id="optRounds" value="5" min="1" max="8" ${running?'disabled':''}></div>
-      <div><label>Optimizer model</label><input type="text" id="optModel" value="gpt-4o" ${running?'disabled':''}></div>
-    </div>
-    <label>OpenAI API key (required — agents run for real)</label>
-    <input type="password" id="optKey" placeholder="sk-..." value="${esc($('#apiKey') ? $('#apiKey').value : '')}" ${running?'disabled':''}>`;
+      <div><label>Optimizer model</label><select id="optModel" style="width:100%" ${running?'disabled':''}>${modelOptions(state.optimize.model)}</select></div>
+    </div>`;
   box.appendChild(form);
+  if ($('#optModel')) $('#optModel').addEventListener('change', e => state.optimize.model = e.target.value);
+  box.appendChild(elHtml('div','subtle','Uses the OpenAI key from the header (🔑 + 💾 Save). Runs for real — costs budget.'));
 
   const startBtn = el('button','primary', running ? 'Running…' : '🔁 Start Self-Improvement');
   startBtn.disabled = running; startBtn.style.marginTop = '8px';
@@ -747,7 +810,7 @@ function renderOptimizeTab(box) {
 async function startOptimize() {
   const opt = state.optimize;
   opt.objective = $('#optObjective').value;
-  const key = $('#optKey').value || ($('#apiKey') ? $('#apiKey').value : '');
+  const key = ($('#apiKey') ? $('#apiKey').value : '');
   const target = +$('#optTarget').value || 85;
   const rounds = +$('#optRounds').value || 5;
   const model = $('#optModel').value || 'gpt-4o';
@@ -868,65 +931,80 @@ function renderDataTab(box) {
   stat.innerHTML = `<b>${d.stats.sessions}</b> sessions · <b>${d.stats.segments.toLocaleString()}</b> segments · <b>${d.stats.whispers.toLocaleString()}</b> production whispers · <b>${d.stats.prompts}</b> prompts.<br><span style="color:var(--warning)">Read-only & local — only transcript text sent to OpenAI during a real run leaves your machine.</span>`;
   box.appendChild(stat);
 
-  if (d.dbScenario) box.appendChild(elHtml('div','picked', `✓ scenario: <b>${esc(d.dbScenario.name)}</b> — ${d.dbScenario.steps.length} turns`));
-  if (d.genSuite) box.appendChild(elHtml('div','picked gen', `🧪 suite: <b>${esc(d.genSuite.name)}</b> — ${d.genSuite.agents.length} agents`));
-  if (d.dbScenario && d.genSuite) {
-    const lc = el('button','primary','▶ Load real session + generated suite');
-    lc.style.margin = '4px 0 12px'; lc.addEventListener('click', loadCombo); box.appendChild(lc);
+  if (d.dbScenario) {
+    box.appendChild(elHtml('div','picked', `✓ <b>${esc(d.dbScenario.name)}</b> — ${d.dbScenario.steps.length} turns · ACTIVE scenario (press <b>Load ▸</b>, top-right)`));
+    const clr = el('button', null, '✕ use a file scenario instead'); clr.style.cssText = 'font-size:11px;margin:0 0 10px';
+    clr.addEventListener('click', () => { d.dbScenario = null; d.dbSessionId = null; if (activeTab==='data') renderInspector(); });
+    box.appendChild(clr);
   }
 
-  // 1 · browse
+  // browse real conversations -> "Use as scenario"
   const a = el('div','sec-card');
-  a.appendChild(elHtml('h4', null, '1 · Pick a real conversation'));
+  a.appendChild(elHtml('h4', null, 'Pick a real conversation → use it as a scenario'));
   const sb = el('input'); sb.type='text'; sb.placeholder='search by name / class / summary, Enter…'; sb.value=d.search; sb.style.width='100%';
   sb.addEventListener('keydown', e => { if (e.key==='Enter'){ d.search=sb.value; loadDbSessions(); } });
   a.appendChild(sb);
   const list = el('div');
-  // Cap the list height so the Generate section below stays reachable (don't bury
-  // it under 60 session rows).
-  list.style.cssText = 'margin-top:8px;max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px';
+  list.style.cssText = 'margin-top:8px;max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px';
   if (d.sessions == null) list.appendChild(el('div','subtle','loading…'));
   else if (!d.sessions.length) list.appendChild(el('div','subtle','no sessions'));
   else {
-    list.appendChild(el('div','subtle', `${d.sessions.length} sessions — scroll within this box; the Generate panel is below.`));
+    list.appendChild(el('div','subtle', `${d.sessions.length} sessions`));
     d.sessions.forEach(s => list.appendChild(sessionRow(s)));
   }
   a.appendChild(list);
   box.appendChild(a);
+  box.appendChild(elHtml('div','subtle','To design agents, use the <b>🧪 Generate</b> tab — it works from a goal alone, and can <i>optionally</i> use a session imported here as real-conversation context.'));
+}
 
-  // 2 · generate
-  const b = el('div','sec-card');
-  b.appendChild(elHtml('h4', null, '2 · Generate an agent suite'));
-  b.appendChild(el('div','subtle','Describe the copilot. The generator writes specialized, silence-disciplined agents (and wires event coordination) as a starting point — then Self-Improve refines them.'));
-  const goal = el('textarea'); goal.id='genGoal'; goal.style.height='70px'; goal.style.marginTop='6px';
+/* ---------- Generate tab (standalone — independent of the production data) ---------- */
+function renderGenerateTab(box) {
+  box.innerHTML = '';
+  const g = state.generate;
+  box.appendChild(el('div','subtle','Describe a copilot and an LLM designs a starter suite of specialized, silence-disciplined agents. Independent of your data — no DB needed. Refine the result with 🔁 Self-Improve.'));
+  const goal = el('textarea'); goal.id='genGoal'; goal.style.height='84px'; goal.style.marginTop='8px';
   goal.placeholder='e.g. A real-time copilot for executive SAP sales calls: catch client objections and buying signals, track commitments, suggest the sharpest next question.';
-  goal.value = d.goalDraft || '';
-  b.appendChild(goal);
+  goal.value = g.goalDraft || '';
+  box.appendChild(goal);
+  ensureModels();
   const row = el('div','opt-row'); row.style.marginTop='6px';
-  row.innerHTML = `<div><label style="font-size:11px;color:var(--muted)">Model</label><input type="text" id="genModel" value="gpt-4o"></div><div><label style="font-size:11px;color:var(--muted)">OpenAI key</label><input type="password" id="genKey" value="${esc($('#apiKey') ? $('#apiKey').value : '')}"></div>`;
-  b.appendChild(row);
-  const useCtx = el('label','inline'); useCtx.style.marginTop='6px';
-  useCtx.innerHTML = `<input type="checkbox" id="genUseCtx" ${d.dbScenario?'checked':''}> design for the picked session (use its transcript + production whispers as context)`;
-  b.appendChild(useCtx);
-  const gb = el('button','primary', d.generating ? 'Generating…' : '🧪 Generate suite'); gb.disabled=d.generating; gb.style.display='block'; gb.style.marginTop='8px';
+  row.innerHTML = `<div><label style="font-size:11px;color:var(--muted)">Model</label><select id="genModel" style="width:100%">${modelOptions(state.generate.model)}</select></div>`;
+  box.appendChild(row);
+  $('#genModel').addEventListener('change', e => state.generate.model = e.target.value);
+  box.appendChild(elHtml('div','subtle','Uses the OpenAI key from the header (🔑 + 💾 Save).'));
+  // OPTIONAL real-conversation grounding
+  const ground = el('div','subtle'); ground.style.margin = '8px 0';
+  if (state.data.dbScenario && state.data.dbSessionId) {
+    ground.innerHTML = `<label class="inline"><input type="checkbox" id="genUseCtx" checked> <i>Optional:</i> design for the imported session <b>"${esc(state.data.dbSessionName || state.data.dbScenario.name)}"</b> (use its transcript + production whispers as context)</label>`;
+  } else {
+    ground.innerHTML = '<i>Optional:</i> import a real conversation in the <b>📚 Data</b> tab first to ground generation in real talk — otherwise it designs purely from your goal.';
+  }
+  box.appendChild(ground);
+  const gb = el('button','primary', g.generating ? 'Generating…' : '🧪 Generate suite'); gb.disabled = g.generating; gb.style.display='block';
   gb.addEventListener('click', doGenerate);
-  b.appendChild(gb);
-  if (d.genSuite) {
-    const gv = el('div'); gv.style.marginTop='8px';
-    d.genSuite.agents.forEach(ag => {
+  box.appendChild(gb);
+
+  if (g.suite) {
+    box.appendChild(elHtml('div','picked gen', `🧪 <b>${esc(g.suite.name)}</b> — ${g.suite.agents.length} agents · ACTIVE suite (press <b>Load ▸</b> or run 🔁 Self-Improve)`));
+    const gv = el('div'); gv.style.marginTop='6px';
+    g.suite.agents.forEach(ag => {
       const mode = (ag.trigger_config||{}).mode; const ms = Array.isArray(mode) ? mode.join('/') : mode;
       gv.appendChild(elHtml('div','agent-doc', `<b>${esc(ag.name)}</b> [${esc(ms)}] — ${esc((ag.text||'').slice(0,130))}…`));
     });
-    b.appendChild(gv);
-    const lint = d.genSuite._lint || [];
+    box.appendChild(gv);
+    const lint = g.suite._lint || [];
     if (lint.length) {
       const lb = el('div'); lb.style.marginTop='8px';
       lb.appendChild(elHtml('div','subtle', '<b style="color:var(--warning)">Auto-fixed firing issues so the agents actually trigger:</b>'));
       lint.forEach(f => lb.appendChild(el('div','agent-doc', (f.startsWith('WARNING') ? '⚠ ' : '✓ ') + f)));
-      b.appendChild(lb);
+      box.appendChild(lb);
     }
+    const bar = el('div'); bar.style.cssText = 'margin-top:10px;display:flex;gap:8px';
+    const load = el('button','primary','▶ Load this suite'); load.addEventListener('click', startSession);
+    const disc = el('button', null, '✕ Discard'); disc.addEventListener('click', () => { g.suite = null; if (activeTab==='generate') renderInspector(); });
+    bar.appendChild(load); bar.appendChild(disc);
+    box.appendChild(bar);
   }
-  box.appendChild(b);
 }
 
 function sessionRow(s) {
@@ -968,47 +1046,27 @@ async function useAsScenario(s, maxTurns) {
 }
 
 async function doGenerate() {
-  const d = state.data;
-  const goal = $('#genGoal').value.trim(); d.goalDraft = goal;
-  const key = $('#genKey').value || ($('#apiKey') ? $('#apiKey').value : '');
+  const g = state.generate;
+  const goal = $('#genGoal').value.trim(); g.goalDraft = goal;
+  const key = ($('#apiKey') ? $('#apiKey').value : '');
   const model = $('#genModel').value || 'gpt-4o';
   const useCtx = $('#genUseCtx') && $('#genUseCtx').checked;
   if (!goal) { setMsg('describe the copilot goal first', true); return; }
   if (!key && !state.hasServerKey) { setMsg('agent generation needs an OpenAI key (paste one and 💾 Save)', true); return; }
-  d.generating = true; if (activeTab==='data') renderInspector();
+  g.generating = true; if (activeTab==='generate') renderInspector();
   setMsg('generating agents… (a few seconds)');
   try {
     const body = { goal, api_key: key, model };
-    if (useCtx && d.dbSessionId) body.db_session_id = d.dbSessionId;
+    if (useCtx && state.data.dbSessionId) body.db_session_id = state.data.dbSessionId;
     const res = await api('/api/generate-suite','POST', body);
-    d.genSuite = res.suite; setMsg(`generated ${res.suite.agents.length} agents — review below, then Load`);
+    g.suite = res.suite; setMsg(`generated ${res.suite.agents.length} agents — review, then ▶ Load this suite`);
   } catch(e){ setMsg(e.message, true); }
-  d.generating = false; if (activeTab==='data') renderInspector();
-}
-
-async function loadCombo() {
-  const d = state.data;
-  if (!d.dbScenario || !d.genSuite) { setMsg('need both a scenario and a generated suite', true); return; }
-  pause();
-  try {
-    const mode = $('#modeSel').value;
-    const body = { scenario: d.dbScenario, suite: d.genSuite, mode };
-    if (mode === 'real') body.api_key = $('#apiKey').value || null;
-    const res = await api('/api/session','POST', body);
-    state.sessionId = res.session_id; state.meta = res.meta; state.mode = mode;
-    state.turns=[]; state.selected=-1; state.whisperCount=0; state.hopCount=0; state.latSum=0;
-    $('#conversation').innerHTML=''; $('#stTotal').textContent = res.meta.scenario.total_steps;
-    ['resetBtn','stepBtn','playBtn','runBtn'].forEach(id => $('#'+id).disabled = false);
-    window.__suiteJSON = JSON.stringify(d.genSuite, null, 2);
-    updateStatus();
-    activeTab='turn'; document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab==='turn'));
-    renderInspector();
-    setMsg(`loaded ${d.genSuite.name} on ${d.dbScenario.name}${mode==='mock' ? ' — mock mode: generated agents stay silent (no rules). Switch to real mode or run Self-Improve.' : ' — Step/Play to see real whispers.'}`);
-  } catch(e){ setMsg(e.message, true); }
+  g.generating = false; if (activeTab==='generate') renderInspector();
 }
 
 loadLists().then(() => setMsg('ready to load')).catch(e => setMsg(e.message, true));
 refreshKeyStatus();
+ensureModels();
 </script>
 </body>
 </html>

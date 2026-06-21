@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +29,11 @@ from .optimizer import run_self_improvement  # noqa: E402
 from .generator import generate_suite  # noqa: E402
 from . import db as xubb_db  # noqa: E402
 from . import learnings  # noqa: E402
+
+try:
+    from openai import AsyncOpenAI  # noqa: E402
+except ImportError:
+    AsyncOpenAI = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
@@ -308,6 +314,49 @@ async def set_key(body: KeyBody):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"could not write .env: {e}")
     return {"ok": True, "has_server_key": bool(os.environ.get("OPENAI_API_KEY"))}
+
+
+# Chat-capable model discovery (live from the OpenAI API; falls back to a static list).
+_MODEL_FALLBACK = ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
+                   "o4-mini", "o3", "o3-mini", "o1-mini"]
+_CHAT_MODEL_RE = re.compile(r"^(gpt-|o1|o3|o4|chatgpt-)")
+_DATED_SNAPSHOT_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")   # e.g. gpt-5.5-2026-04-23
+_FLAGSHIP_RE = re.compile(r"^gpt-\d+(\.\d+)?$")           # clean flagship: gpt-5.5
+_MODEL_EXCLUDE = ("embedding", "tts", "whisper", "dall-e", "audio", "realtime",
+                  "image", "moderation", "transcribe", "search", "instruct")
+
+
+def _is_chat_model(mid: str) -> bool:
+    m = (mid or "").lower()
+    return bool(_CHAT_MODEL_RE.match(m)) and not any(x in m for x in _MODEL_EXCLUDE)
+
+
+def _pick_default(ids: List[str]) -> Optional[str]:
+    for i in ids:                       # newest clean flagship (gpt-5.5), not pro/mini/dated
+        if _FLAGSHIP_RE.match(i):
+            return i
+    return ids[0] if ids else None
+
+
+@app.get("/api/models")
+async def list_models():
+    """Chat models available to the configured key, newest first (rolling aliases;
+    redundant dated snapshots dropped). No key / failure → a static fallback so the
+    dropdown is never empty."""
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key or AsyncOpenAI is None:
+        return {"models": _MODEL_FALLBACK, "default": _pick_default(_MODEL_FALLBACK), "source": "fallback"}
+    try:
+        resp = await AsyncOpenAI(api_key=key).models.list()
+        chat = [(m.id, getattr(m, "created", 0) or 0) for m in resp.data
+                if _is_chat_model(getattr(m, "id", "")) and not _DATED_SNAPSHOT_RE.search(m.id)]
+        chat.sort(key=lambda x: x[1], reverse=True)  # newest first
+        ids = [c[0] for c in chat] or _MODEL_FALLBACK
+        return {"models": ids, "default": _pick_default(ids),
+                "source": "openai" if chat else "fallback"}
+    except Exception as e:
+        return {"models": _MODEL_FALLBACK, "default": _pick_default(_MODEL_FALLBACK),
+                "source": "fallback", "error": str(e)}
 
 
 @app.get("/api/learnings")

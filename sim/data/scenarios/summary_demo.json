@@ -1,0 +1,33 @@
+{
+  "name": "Summary demo: 22-turn sales call",
+  "description": "A 22-turn discovery -> pricing -> close call (YOU = the rep/user, SPEAKER = the customer). Long enough that the every-10-turns Summarizer fires at turns 10 and 20. Watch the `summary` variable appear and update in the Blackboard tab, and open 'view exact prompt' on the reader agents to see the summary inside their prompts.",
+  "session_id": "summary_demo",
+  "window": 12,
+  "user_speaker": "YOU",
+  "user_context": "You are Alex, an account executive on a live discovery call. The copilot whispers private coaching to you.",
+  "language_directive": "Respond in English.",
+  "steps": [
+    { "speaker": "YOU", "text": "Thanks for making the time. I'd love to understand how your team handles this today before I show anything.", "timestamp": 0, "note": "Turn 1. Summarizer is gated off until turn 10 (mod condition) -> it shows under 'skipped: conditions_not_met'." },
+    { "speaker": "SPEAKER", "text": "Sure. Honestly it's mostly spreadsheets right now, passed around over email.", "timestamp": 9 },
+    { "speaker": "YOU", "text": "Got it. Where does that tend to break down for you?", "timestamp": 17 },
+    { "speaker": "SPEAKER", "text": "Things slip. Versions get out of sync, and someone always misses an update.", "timestamp": 26 },
+    { "speaker": "YOU", "text": "How much time would you say that costs the team in a given week?", "timestamp": 35 },
+    { "speaker": "SPEAKER", "text": "Hard to say exactly... probably ten hours a week chasing things down.", "timestamp": 45, "note": "Key fact (10 hrs/week) the Summarizer will capture." },
+    { "speaker": "YOU", "text": "And who's involved in that process day to day?", "timestamp": 54 },
+    { "speaker": "SPEAKER", "text": "Mostly the ops team, about five of us.", "timestamp": 62 },
+    { "speaker": "YOU", "text": "That lines up with what I hear a lot. Before I show the platform -- what would 'better' look like for you?", "timestamp": 71 },
+    { "speaker": "SPEAKER", "text": "One source of truth, fewer manual handoffs, and less time wasted.", "timestamp": 80, "note": "TURN 10 -> turn_count % 10 == 0, so the SUMMARIZER FIRES. Open the Blackboard tab: the `summary` variable appears." },
+    { "speaker": "YOU", "text": "Perfect. Let me walk you through how teams like yours set that up.", "timestamp": 90, "note": "TURN 11 -> the summary is now visible to OTHER agents. Open 'view exact prompt' on Context-Aware Coach: the summary is rendered into its prompt." },
+    { "speaker": "SPEAKER", "text": "Okay. How does it actually work in practice?", "timestamp": 99 },
+    { "speaker": "YOU", "text": "Everything lives in one workspace with automatic versioning, so nothing gets out of sync.", "timestamp": 108 },
+    { "speaker": "SPEAKER", "text": "That sounds useful. What does it cost?", "timestamp": 117 },
+    { "speaker": "YOU", "text": "It's tiered by seats -- let me show you the plan that fits a five-person team.", "timestamp": 126 },
+    { "speaker": "SPEAKER", "text": "Hmm, that's more than we pay now for the spreadsheets.", "timestamp": 136, "note": "Cost objection. Context-Aware Coach fires, referencing the SUMMARY (the 10 hrs/week pain) to reframe on ROI." },
+    { "speaker": "YOU", "text": "Fair -- though the spreadsheets are costing you ten hours a week. Let's look at it as time recovered.", "timestamp": 146 },
+    { "speaker": "SPEAKER", "text": "True. We've got around forty thousand a year budgeted for tooling, if it's the right fit.", "timestamp": 156, "note": "Budget signal (~$40k/yr) -- captured in the turn-20 summary." },
+    { "speaker": "YOU", "text": "That works well. Let me make sure the fit is right for your workflow.", "timestamp": 166 },
+    { "speaker": "SPEAKER", "text": "Makes sense. So what would the next steps look like?", "timestamp": 176, "note": "TURN 20 -> SUMMARIZER FIRES AGAIN and the `summary` variable UPDATES (now includes pricing, objection, budget, buying signal). Deal Advisor fires too." },
+    { "speaker": "YOU", "text": "I'd suggest a two-week pilot with your ops team, then we review the time saved together.", "timestamp": 187 },
+    { "speaker": "SPEAKER", "text": "I like that. Send over a proposal and we'll get it moving.", "timestamp": 198, "note": "Close. Final summary persists in the Blackboard." }
+  ]
+}

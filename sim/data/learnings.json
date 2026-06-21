@@ -1,3 +1,49 @@
 {
-  "lessons": []
+  "lessons": [
+    {
+      "id": "ensure-agents-adhere-strictly-to-their-d",
+      "principle": "Ensure agents adhere strictly to their designated roles to prevent off-role behavior.",
+      "kind": "structural",
+      "before": "objection-detector providing suggestions",
+      "after": "objection-detector only detects objections",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 7.0
+      },
+      "status": "active"
+    },
+    {
+      "id": "reduce-whisper-frequency-by-increasing-c",
+      "principle": "Reduce whisper frequency by increasing cooldown periods and emphasizing criticality to maintain high signal-to-noise ratio.",
+      "kind": "stylistic",
+      "before": "high whisper counts",
+      "after": "whispers reserved for critical instances",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 6.0
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "ensure-whispers-provide-unique-high-valu",
+      "principle": "Ensure whispers provide unique, high-value insights to reduce noise and improve signal quality.",
+      "kind": "stylistic",
+      "before": "Excessive whispering and redundancy.",
+      "after": "Whispers add distinct value and reduce noise.",
+      "scope": [
+        "all"
+      ],
+      "evidence": {
+        "support": 1,
+        "avg_delta": 7.0
+      },
+      "status": "candidate"
+    }
+  ]
 }

@@ -75,20 +75,19 @@ Return ONLY JSON: {"name": "...", "description": "...", "agents": [ \
 
 
 def speaker_orientation(user_speaker: Optional[str]) -> str:
-    """The fixed framing EVERY agent must encode: who is the user vs the audience,
-    and that the whisper is private advice TO the user. Parameterized by the
+    """Instruct the generator/optimizer to WRITE the speaker-role framing into each
+    agent's VISIBLE prompt text — so it's part of what the user sees, edits, and
+    ports to the real app (no behind-the-scenes injection). Parameterized by the
     scenario's user_speaker (e.g. 'YOU' in production, 'REP'/'ME' in demos)."""
     us = user_speaker or "YOU"
     return (
-        "\n\nSPEAKER ORIENTATION — bake this into EVERY agent's prompt:\n"
-        f"- In the transcript, the speaker labeled \"{us}\" is the USER you privately coach — those "
-        "are the user's OWN words.\n"
-        "- EVERY other speaker label is the AUDIENCE / counterparty (could be one person or many).\n"
-        f"- Each agent MUST: (a) attribute correctly — distinguish what the user (\"{us}\") said from "
-        "what the audience said; (b) frame its whisper as PRIVATE advice spoken TO the user "
-        "(\"you…\", \"ask them…\"), NEVER addressed to the audience; (c) watch the AUDIENCE for "
-        f"questions / objections / buying-signals, and watch the USER (\"{us}\") for the user's own "
-        "missteps / over-promises."
+        "\n\nSPEAKER ROLES — write this into EVERY agent's `text` (it is part of the visible, "
+        "portable prompt; do NOT rely on any hidden injection):\n"
+        f"- In the transcript, the speaker labeled \"{us}\" is the USER the agent privately coaches "
+        "(the user's own words); every OTHER speaker is the AUDIENCE / counterparty (one or many).\n"
+        f"- Each prompt must state this, and design the agent to watch the RIGHT speaker: detect "
+        f"questions / objections / buying-signals from the AUDIENCE, and the user's own missteps / "
+        f"over-promises from \"{us}\". Whispers are PRIVATE advice spoken TO the user, never to the audience."
     )
 
 

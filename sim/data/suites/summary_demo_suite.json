@@ -1,0 +1,53 @@
+{
+  "name": "Rolling-summary demo",
+  "description": "A native 'every-10-turns' summary agent that writes a rolling summary to a Blackboard VARIABLE, plus two reader agents that consume that variable in their prompts. Demonstrates: mod-on-turn_count gating, variable_updates, and cross-agent variable reads. The summarizer's prompt is a portable template for the real xubb app.",
+  "agents": [
+    {
+      "id": "summarizer",
+      "name": "Conversation Summarizer",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 0, "priority": 9 },
+      "trigger_conditions": { "mode": "all", "rules": [ { "meta": "turn_count", "op": "mod", "value": 10 } ] },
+      "model_config": { "context_turns": 12 },
+      "text": "[Speaker roles] In the transcript, the speaker labeled \"YOU\" is the user being privately coached (their own words). Every OTHER speaker (e.g. \"SPEAKER\") is the audience / counterparty.\n\nYou are the CONVERSATION SUMMARIZER. You run every 10 turns and maintain a rolling summary that OTHER agents read from the shared `summary` variable. You NEVER whisper to the user.\n\nRead the PRIOR summary and the recent turns, then produce an UPDATED, concise summary (3-6 short points): who is involved, what has been covered, key facts (budget / timeline / decisions), the current phase, and open items. Keep prior facts; fold in what's new.\n\nPrior summary: {{ blackboard.variables.summary }}\n\nReturn JSON: { \"has_insight\": false, \"variable_updates\": { \"summary\": \"<updated summary>\" } }",
+      "_doc": "THE STAR. Fires ONLY when turn_count % 10 == 0 (the mod condition) — i.e. turns 10 and 20 here. Writes the rolling `summary` VARIABLE (no whisper). On every other turn it appears under 'skipped: conditions_not_met'. This is the native 'every-N-turns' pattern: a turn_based agent gated by {meta:turn_count, op:mod, value:10}.",
+      "_mock": {
+        "latency_ms": 400,
+        "rules": [
+          { "when": { "max_turn": 14 }, "variable_updates": { "summary": "Summary (through turn 10): YOU opened and ran discovery. SPEAKER described a manual, spreadsheet-based workflow with ~10 hrs/week lost; ~5 people on the ops team affected. Phase: discovery. No pricing or objections yet. Open: surface budget + timeline, then transition to solution." } },
+          { "when": { "min_turn": 15 }, "variable_updates": { "summary": "Summary (through turn 20): Discovery done (spreadsheet pain, ~10 hrs/week, 5-person ops team). Pricing introduced; SPEAKER raised a cost objection and YOU anchored on ROI. Budget ~= $40k/yr signaled; a buying signal emerged (~turn 18). Phase: negotiation -> closing. Open: confirm fit, propose pilot + 2-week timeline, send proposal." } }
+        ]
+      }
+    },
+    {
+      "id": "context_coach",
+      "name": "Context-Aware Coach",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 8, "priority": 2 },
+      "model_config": { "context_turns": 4 },
+      "text": "[Speaker roles] \"YOU\" is the user you privately coach; every other speaker is the audience / counterparty.\n\nYou coach YOU using the WHOLE conversation, not just the last line. Use the running summary below so your advice fits the broader context.\n\nRunning summary: {{ blackboard.variables.summary }}\n\nOnly whisper when you have a high-value, context-aware suggestion for YOU based on the latest turn AND the summary. Otherwise has_insight=false. Address YOU directly (\"you...\", \"ask them...\").",
+      "_doc": "READER #1. Its prompt embeds {{ blackboard.variables.summary }} — open 'view exact prompt' on this agent after turn 10 and you'll see the rolling summary rendered right into the prompt it actually received. Proof of cross-agent variable access.",
+      "_mock": {
+        "latency_ms": 300,
+        "rules": [
+          { "when": { "any_keywords": ["expensive", "more than", "cost", "pay now"] }, "speak": { "content": "Reframe on ROI using what they already told you — ~10 hrs/week lost across 5 people. Tie price to that, not to their current tool.", "type": "warning", "confidence": 0.9, "action_label": "Anchor on ROI" } }
+        ]
+      }
+    },
+    {
+      "id": "deal_advisor",
+      "name": "Deal Advisor",
+      "output_format": "default_v2",
+      "trigger_config": { "mode": "turn_based", "cooldown": 6, "priority": 3 },
+      "model_config": { "context_turns": 4 },
+      "text": "[Speaker roles] \"YOU\" is the user you coach; every other speaker is the audience / counterparty.\n\nYou advise YOU on advancing the deal, informed by the full conversation.\n\nRunning summary: {{ blackboard.variables.summary }}\n\nWhen the audience signals readiness, prompt YOU to propose concrete next steps grounded in the summary's facts. Otherwise stay silent (has_insight=false).",
+      "_doc": "READER #2 — also consumes the `summary` variable in its prompt. Two agents reading the same shared summary = the variable is accessible to other agents, as designed.",
+      "_mock": {
+        "latency_ms": 320,
+        "rules": [
+          { "when": { "any_keywords": ["next steps", "move forward", "proposal", "ready"] }, "speak": { "content": "Strong signal. Propose a pilot with a 2-week timeline and reference their ~$40k/yr budget from earlier.", "type": "opportunity", "confidence": 0.9, "action_label": "Propose pilot" } }
+        ]
+      }
+    }
+  ]
+}

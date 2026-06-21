@@ -10,6 +10,10 @@ sim/db/
 # Generated/optimized artifacts
 sim/data/reports/
 
+# Internal docs / cross-team specs (may reference xubb_backend internals) — keep
+# out of the public repo. Share these directly with the relevant team instead.
+/docs/
+
 # Python
 __pycache__/
 *.pyc

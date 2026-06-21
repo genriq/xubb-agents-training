@@ -166,6 +166,15 @@ class CaptureTracer(AgentCallbackHandler):
                 k: len(v) for k, v in (getattr(response, "queue_pushes", {}) or {}).items()
             }
             rec["memory_updates_keys"] = list((getattr(response, "memory_updates", {}) or {}).keys())
+            # FULL TRANSPARENCY: the exact messages the framework sent to the LLM
+            # (system prompt = the agent's text + everything the host/framework wraps
+            # around it; user = the transcript) plus the raw LLM output. So the user
+            # sees the COMPLETE prompt, with nothing hidden behind the scenes.
+            dbg = getattr(response, "debug_info", None) or {}
+            if dbg.get("prompt_messages"):
+                rec["prompt"] = dbg["prompt_messages"]
+                rec["model"] = dbg.get("model")
+                rec["llm_output"] = dbg.get("llm_output")
         bucket["agents"].append(rec)
 
     # -------------------------------------------------------------- export
