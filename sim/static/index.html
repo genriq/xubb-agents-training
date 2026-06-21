@@ -190,7 +190,6 @@
 <body>
 <header>
   <h1>🎧 Xubb Agents Simulator</h1>
-  <label class="inline">Scenario <select id="scenarioSel"></select></label>
   <label class="inline">Suite <select id="suiteSel"></select></label>
   <label class="inline">🔑 <input id="apiKey" type="password" placeholder="OpenAI key" style="width:150px" /></label>
   <button id="saveKeyBtn" title="Save key on the server (.env) so you don't re-paste it">💾 Save</button>
@@ -278,9 +277,9 @@ async function api(path, method='GET', body=null) {
 function setMsg(m, isErr=false) { const e = $('#stMsg'); e.textContent = m; e.style.color = isErr ? 'var(--error)' : ''; }
 
 async function loadLists() {
-  const [scenarios, suites] = await Promise.all([api('/api/scenarios'), api('/api/suites')]);
-  const fill = (sel, items) => { sel.innerHTML = ''; items.forEach(it => { const o = el('option', null, it.name); o.value = it.id; o.title = it.description||''; sel.appendChild(o); }); };
-  fill($('#scenarioSel'), scenarios); fill($('#suiteSel'), suites);
+  const suites = await api('/api/suites');
+  const sel = $('#suiteSel'); sel.innerHTML = '';
+  suites.forEach(it => { const o = el('option', null, it.name); o.value = it.id; o.title = it.description||''; sel.appendChild(o); });
 }
 
 async function refreshKeyStatus() {
@@ -311,7 +310,8 @@ async function startSession() {
     // A generated suite / imported scenario (held in memory) takes precedence over
     // the dropdown files — so one Load works for any combination, decoupled.
     if (state.generate.suite) body.suite = state.generate.suite; else body.suite_name = $('#suiteSel').value;
-    if (state.data.dbScenario) body.scenario = state.data.dbScenario; else body.scenario_name = $('#scenarioSel').value;
+    if (state.data.dbScenario) body.scenario = state.data.dbScenario;
+    else { setMsg('No scenario yet — open 📚 Data and pick a real session, or load the summary-agent example there.', true); return; }
     const res = await api('/api/session', 'POST', body);
     state.sessionId = res.session_id; state.meta = res.meta; state.mode = 'real';
     state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
@@ -321,11 +321,25 @@ async function startSession() {
     renderInspector();
     updateStatus();
     const usingGen = state.generate.suite ? ' [generated suite]' : '';
-    const usingDb = state.data.dbScenario ? ' [imported scenario]' : '';
-    setMsg('ready — ' + res.meta.suite.name + ' on ' + res.meta.scenario.name + usingGen + usingDb);
+    const usingScen = state.data.dbSessionId ? ' [imported session]' : (state.data.dbScenario ? ' [example]' : '');
+    setMsg('ready — ' + res.meta.suite.name + ' on ' + res.meta.scenario.name + usingGen + usingScen);
     // preload the editor with whatever suite is active
     if (state.generate.suite) { window.__suiteJSON = JSON.stringify(state.generate.suite, null, 2); }
     else { try { const suite = await api('/api/suite/' + $('#suiteSel').value); window.__suiteJSON = JSON.stringify(suite, null, 2); } catch(e){} }
+  } catch (e) { setMsg(e.message, true); }
+}
+
+// Load the one built-in scenario (the rolling-summary demo) as the active scenario
+// and start it. No DB needed; this is the example behind the Data tab's button.
+async function loadExample() {
+  try {
+    setMsg('loading summary-agent example…');
+    const scen = await api('/api/scenario/summary_demo');
+    state.data.dbScenario = scen; state.data.dbSessionId = null; state.data.dbSessionName = 'summary-agent example';
+    state.generate.suite = null;                       // use the file suite, not a generated one
+    const sel = $('#suiteSel');
+    if (sel && [...sel.options].some(o => o.value === 'summary_demo_suite')) sel.value = 'summary_demo_suite';
+    await startSession();
   } catch (e) { setMsg(e.message, true); }
 }
 
@@ -737,7 +751,8 @@ function renderEditorTab(box) {
 
   validateBtn.addEventListener('click', async () => {
     if (!parse()) return;
-    const scenario = await api('/api/scenario/' + $('#scenarioSel').value);
+    const scenario = state.data.dbScenario;
+    if (!scenario) { msg.className='err'; msg.textContent='Load a scenario first (📚 Data → a real session or the example).'; return; }
     try {
       const res = await api('/api/validate', 'POST', { suite: parsed, scenario });
       msg.className = res.ok ? 'subtle' : 'err';
@@ -749,7 +764,8 @@ function renderEditorTab(box) {
     if (!parse()) return;
     pause();
     window.__suiteJSON = ta.value;
-    const scenario = await api('/api/scenario/' + $('#scenarioSel').value);
+    const scenario = state.data.dbScenario;
+    if (!scenario) { msg.className='err'; msg.textContent='Load a scenario first (📚 Data → a real session or the example).'; return; }
     try {
       const res = await api('/api/session', 'POST', { suite: parsed, scenario, mode: 'real', api_key: $('#apiKey').value || null });
       state.sessionId = res.session_id; state.meta = res.meta;
@@ -908,6 +924,16 @@ function downloadText(name, text) {
 function renderDataTab(box) {
   box.innerHTML = '';
   const d = state.data;
+
+  // Built-in example — needs no DB. The one scenario that isn't a real session.
+  const ex = el('div','sec-card');
+  ex.appendChild(elHtml('h4', null, '▶ Built-in example'));
+  ex.appendChild(elHtml('div','subtle','The rolling-summary demo — an every-10-turns summarizer that writes a Blackboard variable other agents read. Self-contained; no DB needed.'));
+  const exBtn = el('button', null, 'Load summary-agent example'); exBtn.style.marginTop = '8px';
+  exBtn.addEventListener('click', loadExample);
+  ex.appendChild(exBtn);
+  box.appendChild(ex);
+
   if (!d.checked) {
     d.checked = true;
     box.appendChild(el('div','subtle','Checking for production database…'));
@@ -925,7 +951,7 @@ function renderDataTab(box) {
 
   if (d.dbScenario) {
     box.appendChild(elHtml('div','picked', `✓ <b>${esc(d.dbScenario.name)}</b> — ${d.dbScenario.steps.length} turns · ACTIVE scenario (press <b>Load ▸</b>, top-right)`));
-    const clr = el('button', null, '✕ use a file scenario instead'); clr.style.cssText = 'font-size:11px;margin:0 0 10px';
+    const clr = el('button', null, '✕ clear active scenario'); clr.style.cssText = 'font-size:11px;margin:0 0 10px';
     clr.addEventListener('click', () => { d.dbScenario = null; d.dbSessionId = null; if (activeTab==='data') renderInspector(); });
     box.appendChild(clr);
   }
