@@ -311,7 +311,11 @@ async function startSession() {
     // the dropdown files — so one Load works for any combination, decoupled.
     if (state.generate.suite) body.suite = state.generate.suite; else body.suite_name = $('#suiteSel').value;
     if (state.data.dbScenario) body.scenario = state.data.dbScenario;
-    else { setMsg('No scenario yet — open 📚 Data and pick a real session, or load the summary-agent example there.', true); return; }
+    else {
+      setMsg('A suite needs a scenario to run on. Pick one here → a real session, or "Load summary-agent example".', true);
+      switchTab('data');
+      return;
+    }
     const res = await api('/api/session', 'POST', body);
     state.sessionId = res.session_id; state.meta = res.meta; state.mode = 'real';
     state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
@@ -510,11 +514,12 @@ function updateStatus() {
 
 /* ---------- inspector tabs ---------- */
 let activeTab = 'turn';
-document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
-  activeTab = tab.dataset.tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => switchTab(tab.dataset.tab)));
+function switchTab(name) {
+  activeTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   renderInspector();
-}));
+}
 
 function renderInspector() {
   const box = $('#inspector');
@@ -1003,7 +1008,11 @@ function renderGenerateTab(box) {
   box.appendChild(gb);
 
   if (g.suite) {
-    box.appendChild(elHtml('div','picked gen', `🧪 <b>${esc(g.suite.name)}</b> — ${g.suite.agents.length} agents · ACTIVE suite (press <b>Load ▸</b> or run 🔁 Self-Improve)`));
+    box.appendChild(elHtml('div','picked gen', `🧪 <b>${esc(g.suite.name)}</b> — ${g.suite.agents.length} agents · ACTIVE suite`));
+    if (state.data.dbScenario)
+      box.appendChild(elHtml('div','subtle', `Will run on <b>${esc(state.data.dbScenario.name)}</b> — press <b>▶ Load this suite</b> below, or run 🔁 Self-Improve.`));
+    else
+      box.appendChild(elHtml('div','subtle', '<span style="color:var(--warning)">⚠ No scenario selected.</span> A suite needs a scenario to run — <b>Load</b> will take you to <b>📚 Data</b> to pick a real session (or the summary-agent example).'));
     const gv = el('div'); gv.style.marginTop='6px';
     g.suite.agents.forEach(ag => {
       const mode = (ag.trigger_config||{}).mode; const ms = Array.isArray(mode) ? mode.join('/') : mode;
