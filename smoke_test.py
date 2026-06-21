@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Headless end-to-end check: replay the sales scenario, print the trace."""
+"""Headless end-to-end check: replay the summary-agent demo (mock mode), print the trace.
+
+Mock mode is kept for this internal headless check only — the app UI always runs real."""
 
 import asyncio
 import json
@@ -21,8 +23,8 @@ def load(rel):
 
 
 async def main():
-    suite = load("suites/sales_suite.json")
-    scenario = load("scenarios/sales_call.json")
+    suite = load("suites/summary_demo_suite.json")
+    scenario = load("scenarios/summary_demo.json")
     sess = SimulationSession(suite=suite, scenario=scenario, mode="mock")
     print(f"AGENTS: {[a['name'] for a in sess.meta()['agents']]}\n")
 

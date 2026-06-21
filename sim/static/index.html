@@ -192,9 +192,6 @@
   <h1>🎧 Xubb Agents Simulator</h1>
   <label class="inline">Scenario <select id="scenarioSel"></select></label>
   <label class="inline">Suite <select id="suiteSel"></select></label>
-  <label class="inline">Mode
-    <select id="modeSel"><option value="mock">mock</option><option value="real">real (OpenAI)</option></select>
-  </label>
   <label class="inline">🔑 <input id="apiKey" type="password" placeholder="OpenAI key" style="width:150px" /></label>
   <button id="saveKeyBtn" title="Save key on the server (.env) so you don't re-paste it">💾 Save</button>
   <span id="keyStatus" class="pill" style="font-size:11px">key?</span>
@@ -246,7 +243,7 @@
   <span>Turn <b id="stTurn">–</b>/<span id="stTotal">–</span></span>
   <span>Whispers <b id="stWhispers">0</b></span>
   <span>Coordination hops (P2) <b id="stHops">0</b></span>
-  <span>Σ modeled latency <b id="stLat">0</b> ms</span>
+  <span>Σ latency <b id="stLat">0</b> ms</span>
   <span class="spacer" style="flex:1"></span>
   <span id="stMsg" class="pill">idle</span>
 </div>
@@ -260,7 +257,7 @@ const elHtml = (tag, cls, html) => { const e = document.createElement(tag); if (
 const ICON = { warning:'⚠️', opportunity:'⚡', suggestion:'💡', fact:'📌', praise:'⭐', error:'⛔' };
 
 const state = {
-  sessionId: null, meta: null, mode: 'mock',
+  sessionId: null, meta: null, mode: 'real',
   turns: [], selected: -1, playing: false, playTimer: null,
   whisperCount: 0, hopCount: 0, latSum: 0,
   hasServerKey: false,
@@ -310,15 +307,13 @@ async function startSession() {
   pause();
   try {
     setMsg('building session…');
-    const mode = $('#modeSel').value;
-    const body = { mode };
+    const body = { mode: 'real', api_key: $('#apiKey').value || null };
     // A generated suite / imported scenario (held in memory) takes precedence over
     // the dropdown files — so one Load works for any combination, decoupled.
     if (state.generate.suite) body.suite = state.generate.suite; else body.suite_name = $('#suiteSel').value;
     if (state.data.dbScenario) body.scenario = state.data.dbScenario; else body.scenario_name = $('#scenarioSel').value;
-    if (mode === 'real') body.api_key = $('#apiKey').value || null;
     const res = await api('/api/session', 'POST', body);
-    state.sessionId = res.session_id; state.meta = res.meta; state.mode = mode;
+    state.sessionId = res.session_id; state.meta = res.meta; state.mode = 'real';
     state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
     $('#conversation').innerHTML = '';
     $('#stTotal').textContent = res.meta.scenario.total_steps;
@@ -380,7 +375,7 @@ function pause() {
   if (state.playTimer) { clearTimeout(state.playTimer); state.playTimer = null; }
 }
 
-function latency(t) { return state.mode === 'real' ? (t.real_latency_ms || 0) : (t.modeled_latency_ms || 0); }
+function latency(t) { return t.real_latency_ms != null ? t.real_latency_ms : (t.modeled_latency_ms || 0); }
 function agentDoc(name) { const a = (state.meta && state.meta.agents || []).find(x => x.name === name); return a ? a.doc : ''; }
 async function ensureModels() {
   if (state.models) return;
@@ -537,15 +532,12 @@ function renderTurnTab(box) {
 
   // latency + coordination depth
   const latLine = el('div', 'subtle'); latLine.style.margin = '6px 0 12px';
-  const parts = (t.phase_latencies||[]).map(p => `P${p.phase}: ${Math.round(p.modeled_latency_ms)}ms`).join('  +  ');
   const hop = (t.phase_latencies||[]).find(p => p.phase === 2);
-  latLine.innerHTML = `Modeled latency: <b style="color:var(--text)">${Math.round(t.modeled_latency_ms)}ms</b>` +
-    ((t.phase_latencies||[]).length > 1 ? `  (${parts})` : '') +
-    (state.mode === 'real' && t.real_latency_ms != null ? `  · wall-clock: ${Math.round(t.real_latency_ms)}ms` : '');
+  latLine.innerHTML = `Latency (wall-clock): <b style="color:var(--text)">${t.real_latency_ms != null ? Math.round(t.real_latency_ms) : '—'}ms</b>`;
   box.appendChild(latLine);
   if (hop) {
     const cd = el('div', 'edge');
-    cd.textContent = `🔗 coordination depth: 1 hop (Phase 2 adds a second sequential LLM round-trip, +${Math.round(hop.modeled_latency_ms)}ms)`;
+    cd.textContent = `🔗 coordination depth: 1 hop (Phase 2 adds a second sequential LLM round-trip)`;
     box.appendChild(cd);
   }
 
@@ -730,7 +722,7 @@ function renderAgentsTab(box) {
 
 function renderEditorTab(box) {
   box.innerHTML = '';
-  box.appendChild(el('div', 'subtle', 'Edit the suite JSON (agents + mock rules) and Apply to restart the session with your changes. The scenario stays the same.'));
+  box.appendChild(el('div', 'subtle', 'Edit the suite JSON (the agents) and Apply to restart the session with your changes. The scenario stays the same.'));
   const ta = el('textarea');
   ta.value = window.__suiteJSON || '{}';
   box.appendChild(ta);
@@ -759,7 +751,7 @@ function renderEditorTab(box) {
     window.__suiteJSON = ta.value;
     const scenario = await api('/api/scenario/' + $('#scenarioSel').value);
     try {
-      const res = await api('/api/session', 'POST', { suite: parsed, scenario, mode: $('#modeSel').value, api_key: $('#apiKey').value || null });
+      const res = await api('/api/session', 'POST', { suite: parsed, scenario, mode: 'real', api_key: $('#apiKey').value || null });
       state.sessionId = res.session_id; state.meta = res.meta;
       state.turns = []; state.selected = -1; state.whisperCount = 0; state.hopCount = 0; state.latSum = 0;
       $('#conversation').innerHTML = ''; updateStatus();
