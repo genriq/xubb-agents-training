@@ -15,6 +15,7 @@ import json
 from typing import Any, Dict, Optional
 
 from .driver import SimulationSession
+from .llm_compat import create_json
 from . import learnings
 
 try:
@@ -124,13 +125,11 @@ async def generate_suite(
         if baseline_sample:
             user += ("\nThe current production agents whisper things like the following. Do BETTER — "
                      f"sharper, more specialized, far less spammy:\n{baseline_sample[:1400]}\n")
-        resp = await client.chat.completions.create(
-            model=model, temperature=0.4,
-            response_format={"type": "json_object"},
+        suite = await create_json(
+            client, model=model, temperature=0.4,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}],
         )
-        suite = json.loads(resp.choices[0].message.content)
 
     suite = _normalize(suite)
     if not suite.get("agents"):

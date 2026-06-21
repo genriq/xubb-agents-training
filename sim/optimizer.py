@@ -23,6 +23,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 
 from .driver import SimulationSession
+from .llm_compat import create_json
 from . import learnings
 from .generator import speaker_orientation
 
@@ -129,16 +130,15 @@ def render_run(scenario: Dict[str, Any], traces: List[Dict[str, Any]]) -> str:
 # LLM helpers
 # =============================================================================
 async def _openai_json(client, model: str, system: str, user: str) -> Dict[str, Any]:
-    resp = await client.chat.completions.create(
+    return await create_json(
+        client,
         model=model,
         temperature=0,
-        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
     )
-    return json.loads(resp.choices[0].message.content)
 
 
 _JUDGE_SYSTEM = """You are a STRICT evaluator of a real-time conversational-copilot agent suite \
